@@ -1,0 +1,35 @@
+{
+  "name": "intraclaw",
+  "version": "1.0.0",
+  "description": "Agent IA autonome personnel — Agence Web + HaiSkills",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint src/",
+    "test": "jest"
+  },
+  "keywords": [
+    "ai-agent",
+    "automation",
+    "prospecting",
+    "web-agency"
+  ],
+  "author": "Ayman Idamre",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@notionhq/client": "^2.3.0",
+    "dotenv": "^17.4.1",
+    "google-auth-library": "^10.6.2",
+    "node-cron": "^4.2.1",
+    "puppeteer": "^24.40.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/node-cron": "^3.0.11",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.4.0"
+  }
+}

@@ -1,0 +1,20 @@
+version: "3.8"
+
+services:
+  intraclaw:
+    build: .
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./memory:/app/memory
+    depends_on:
+      - chromadb
+    restart: unless-stopped
+
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/chroma:/chroma/chroma
+    restart: unless-stopped

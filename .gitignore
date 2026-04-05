@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+data/logs/
+data/cache/
+data/chroma/
+memory/MEMORY.md
+*.log
+.DS_Store
