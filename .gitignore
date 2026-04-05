@@ -4,6 +4,14 @@ dist/
 data/logs/
 data/cache/
 data/chroma/
-memory/MEMORY.md
 *.log
 .DS_Store
+Thumbs.db
+
+# Runtime state (generated, not source)
+data/ai-cache/
+data/rate-limit-state.json
+data/cost-state.json
+data/emails-sent.json
+data/strategy.json
+data/reports/
