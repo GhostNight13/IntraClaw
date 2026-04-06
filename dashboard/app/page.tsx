@@ -1,0 +1,293 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import { RefreshCw } from 'lucide-react';
+import { KpiCard } from '@/components/KpiCard';
+import { AgentStatusBadge } from '@/components/AgentStatusBadge';
+import { api, StatusResponse, ProspectsResponse, Action } from '@/lib/api';
+
+interface DashboardData {
+  status: StatusResponse | null;
+  prospects: ProspectsResponse | null;
+  actions: Action[];
+}
+
+const AGENTS = [
+  { key: 'coordinator',  name: 'Coordinator'  },
+  { key: 'prospection',  name: 'Prospection'  },
+  { key: 'cold-email',   name: 'Cold Email'   },
+  { key: 'content',      name: 'Content'      },
+  { key: 'reporting',    name: 'Reporting'    },
+];
+
+const STAGE_COLORS: Record<string, string> = {
+  new:          'var(--accent-blue)',
+  contacted:    'var(--accent-yellow)',
+  replied:      '#8B5CF6',
+  demo_booked:  'var(--accent-green)',
+  converted:    '#10B981',
+};
+
+function FunnelBar({ pipeline }: { pipeline: Record<string, number> }) {
+  const stages = ['new', 'contacted', 'replied', 'demo_booked', 'converted'];
+  const total = stages.reduce((s, k) => s + (pipeline[k] ?? 0), 0) || 1;
+
+  return (
+    <div className="rounded-xl p-5 border flex flex-col gap-3"
+      style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+      <span className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+        Pipeline prospects
+      </span>
+      <div className="flex h-5 rounded-full overflow-hidden gap-px">
+        {stages.map(stage => {
+          const count = pipeline[stage] ?? 0;
+          const pct = (count / total) * 100;
+          if (pct === 0) return null;
+          return (
+            <div key={stage} style={{ width: `${pct}%`, background: STAGE_COLORS[stage] }}
+              title={`${stage}: ${count}`} />
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap gap-3">
+        {stages.map(stage => (
+          <div key={stage} className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full shrink-0"
+              style={{ background: STAGE_COLORS[stage] }} />
+            <span className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>
+              {stage.replace('_', ' ')}&nbsp;
+              <span style={{ color: 'var(--text-primary)' }}>{pipeline[stage] ?? 0}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const STATUS_ICONS: Record<string, string> = { success: '✓', error: '✗', running: '⟳', pending: '·' };
+
+function ActivityFeed({ actions }: { actions: Action[] }) {
+  return (
+    <div className="rounded-xl border flex flex-col"
+      style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+      <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+        <span className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+          Activité récente
+        </span>
+      </div>
+      <div className="flex flex-col divide-y" style={{ '--tw-divide-opacity': 1 } as React.CSSProperties}>
+        {actions.length === 0 && (
+          <div className="px-5 py-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+            Aucune action récente
+          </div>
+        )}
+        {actions.slice(0, 8).map(a => {
+          const isOk = a.status === 'success';
+          const icon = STATUS_ICONS[a.status] ?? '·';
+          const iconColor = isOk ? 'var(--accent-green)' : a.status === 'error' ? 'var(--accent-red)' : 'var(--text-muted)';
+          const ts = new Date(a.created_at).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
+          return (
+            <div key={a.id} className="flex items-start gap-3 px-5 py-3"
+              style={{ borderColor: 'var(--border)' }}>
+              <span className="mt-0.5 text-xs font-mono w-4 shrink-0 text-center"
+                style={{ color: iconColor }}>{icon}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 justify-between">
+                  <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                    {a.agent} — {a.task}
+                  </span>
+                  <span className="text-xs shrink-0 font-mono" style={{ color: 'var(--text-muted)' }}>{ts}</span>
+                </div>
+                <div className="flex items-center gap-3 mt-0.5">
+                  {a.model && (
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{a.model}</span>
+                  )}
+                  {a.duration_ms != null && (
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{a.duration_ms}ms</span>
+                  )}
+                  {a.cost_eur != null && a.cost_eur > 0 && (
+                    <span className="text-xs" style={{ color: 'var(--accent-yellow)' }}>
+                      {a.cost_eur.toFixed(4)}€
+                    </span>
+                  )}
+                  {a.error && (
+                    <span className="text-xs truncate" style={{ color: 'var(--accent-red)' }}>{a.error}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export default function DashboardPage() {
+  const [data, setData] = useState<DashboardData>({ status: null, prospects: null, actions: [] });
+  const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+
+  const load = useCallback(async () => {
+    const [s, p, a] = await Promise.allSettled([
+      api.status(),
+      api.prospects(),
+      api.actions(10),
+    ]);
+    setData({
+      status:    s.status === 'fulfilled' ? s.value : null,
+      prospects: p.status === 'fulfilled' ? p.value : null,
+      actions:   a.status === 'fulfilled' ? a.value : [],
+    });
+    setLastRefresh(new Date());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 30_000);
+    return () => clearInterval(id);
+  }, [load]);
+
+  const st = data.status;
+  const pr = data.prospects;
+
+  const pipeline = pr?.pipeline ?? {};
+  const totalProspects = Object.values(pipeline).reduce((s, v) => s + v, 0);
+  const converted = pipeline['converted'] ?? 0;
+  const convRate = totalProspects > 0 ? ((converted / totalProspects) * 100).toFixed(1) : '0';
+
+  const budget = st?.budget;
+  const budgetUsed = budget ? (budget.used / budget.daily) * 100 : 0;
+  const claudeUsed = st?.rateLimits?.claude ?? 0;
+  const claudeMax = 50;
+
+  const today = new Date().toLocaleDateString('fr-BE', {
+    weekday: 'long', day: 'numeric', month: 'long',
+  });
+
+  // Derive agent statuses from recent actions
+  const agentStatuses = AGENTS.map(({ key, name }) => {
+    const relevant = data.actions.filter(a => a.agent === key);
+    const last = relevant[0];
+    const status = !last ? 'idle'
+      : last.status === 'error' ? 'error'
+      : last.status === 'running' ? 'active'
+      : 'idle';
+    const todayActions = relevant.filter(a => {
+      const d = new Date(a.created_at);
+      const now = new Date();
+      return d.toDateString() === now.toDateString();
+    }).length;
+    return { name, status: status as 'active' | 'idle' | 'error', lastAction: last?.task, actionsToday: todayActions };
+  });
+
+  return (
+    <div className="flex flex-col gap-6 p-6 max-w-7xl mx-auto">
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Dashboard</h1>
+          <p className="text-sm capitalize mt-0.5" style={{ color: 'var(--text-muted)' }}>{today}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {loading ? 'Chargement…' : `Mis à jour ${lastRefresh.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}`}
+          </span>
+          <button
+            onClick={load}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors"
+            style={{ background: 'var(--bg-card)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            Rafraîchir
+          </button>
+        </div>
+      </div>
+
+      {/* KPI row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard
+          label="Prospects total"
+          value={totalProspects}
+          sub={`${converted} convertis`}
+          accent="blue"
+          progress={Math.min(100, (totalProspects / 50) * 100)}
+        />
+        <KpiCard
+          label="Taux conversion"
+          value={`${convRate}%`}
+          sub={pr ? `Réponses: ${pr.rates?.replyRate ?? '—'}` : '—'}
+          accent="green"
+        />
+        <KpiCard
+          label="Claude API"
+          value={`${claudeUsed}/${claudeMax}`}
+          sub="appels aujourd'hui"
+          accent={claudeUsed > 40 ? 'red' : claudeUsed > 30 ? 'yellow' : 'blue'}
+          progress={(claudeUsed / claudeMax) * 100}
+        />
+        <KpiCard
+          label="Budget IA"
+          value={budget ? `${budget.used.toFixed(3)}€` : '—'}
+          sub={budget ? `Limite: ${budget.daily}€/jour` : '—'}
+          accent={budgetUsed > 85 ? 'red' : budgetUsed > 60 ? 'yellow' : 'green'}
+          progress={budgetUsed}
+        />
+      </div>
+
+      {/* Funnel + Agents */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
+          <FunnelBar pipeline={pipeline} />
+        </div>
+        <div className="rounded-xl p-5 border flex flex-col gap-3"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+          <span className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+            Agents
+          </span>
+          <div className="flex flex-col gap-2">
+            {agentStatuses.map(a => (
+              <AgentStatusBadge key={a.name} {...a} />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Activity feed */}
+      <ActivityFeed actions={data.actions} />
+
+      {/* Scheduler status */}
+      {st && (
+        <div className="rounded-xl p-5 border flex flex-col gap-3"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+              Scheduler
+            </span>
+            <span className="text-xs px-2 py-0.5 rounded-full"
+              style={{
+                background: st.scheduler?.paused ? 'var(--accent-red)20' : 'var(--accent-green)20',
+                color: st.scheduler?.paused ? 'var(--accent-red)' : 'var(--accent-green)',
+              }}>
+              {st.scheduler?.paused ? 'En pause' : 'Actif'}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(st.scheduler?.jobs ?? []).map((job: { name: string; schedule: string }) => (
+              <div key={job.name} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs"
+                style={{ background: 'var(--bg-hover)', color: 'var(--text-muted)' }}>
+                <span style={{ color: 'var(--text-primary)' }}>{job.name}</span>
+                <span className="font-mono">{job.schedule}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
