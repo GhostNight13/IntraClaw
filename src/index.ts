@@ -13,6 +13,7 @@ import { costTracker } from './utils/cost-tracker';
 import { AgentTask } from './types';
 import { runTask } from './agents/coordinator';
 import { initTelegram } from './channels/telegram';
+import { startServer } from './server';
 
 // ─── Task handler (delegated to coordinator) ──────────────────────────────────
 
@@ -55,10 +56,13 @@ async function main(): Promise<void> {
   // 4. Init Telegram channel (no-op if token not set)
   initTelegram();
 
+  // 5. Start Express API server (port 3001)
+  startServer();
+
   logger.info('Main', 'IntraClaw started — scheduler active (Europe/Brussels)');
   logger.info('Main', 'Waiting for scheduled tasks... Press Ctrl+C to stop.');
 
-  // 4. Graceful shutdown
+  // 6. Graceful shutdown
   process.on('SIGINT',  () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 }

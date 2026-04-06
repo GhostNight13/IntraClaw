@@ -21,15 +21,21 @@
   "private": true,
   "dependencies": {
     "@notionhq/client": "^2.3.0",
+    "better-sqlite3": "^12.8.0",
     "dotenv": "^17.4.1",
+    "express": "^5.2.1",
     "google-auth-library": "^10.6.2",
     "grammy": "^1.42.0",
     "node-cron": "^4.2.1",
-    "puppeteer": "^24.40.0"
+    "puppeteer": "^24.40.0",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
     "@types/node": "^20.0.0",
     "@types/node-cron": "^3.0.11",
+    "@types/ws": "^8.18.1",
     "ts-node": "^10.9.0",
     "typescript": "^5.4.0"
   }
