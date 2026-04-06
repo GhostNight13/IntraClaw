@@ -138,7 +138,7 @@ export default function DashboardPage() {
     setData({
       status:    s.status === 'fulfilled' ? s.value : null,
       prospects: p.status === 'fulfilled' ? p.value : null,
-      actions:   a.status === 'fulfilled' ? a.value : [],
+      actions:   a.status === 'fulfilled' ? (a.value as { actions: Action[] }).actions ?? [] : [],
     });
     setLastRefresh(new Date());
     setLoading(false);
@@ -154,13 +154,13 @@ export default function DashboardPage() {
   const pr = data.prospects;
 
   const pipeline = pr?.pipeline ?? {};
-  const totalProspects = Object.values(pipeline).reduce((s, v) => s + v, 0);
-  const converted = pipeline['converted'] ?? 0;
+  const totalProspects = Object.values(pipeline).reduce((s: number, v) => s + (v as number), 0);
+  const converted = (pipeline as Record<string, number>)['converted'] ?? 0;
   const convRate = totalProspects > 0 ? ((converted / totalProspects) * 100).toFixed(1) : '0';
 
   const budget = st?.budget;
-  const budgetUsed = budget ? (budget.used / budget.daily) * 100 : 0;
-  const claudeUsed = st?.rateLimits?.claude ?? 0;
+  const budgetUsed = budget ? (budget.spentEur / budget.budgetEur) * 100 : 0;
+  const claudeUsed = st?.rateLimits?.claude?.count ?? 0;
   const claudeMax = 50;
 
   const today = new Date().toLocaleDateString('fr-BE', {
@@ -221,7 +221,7 @@ export default function DashboardPage() {
         <KpiCard
           label="Taux conversion"
           value={`${convRate}%`}
-          sub={pr ? `Réponses: ${pr.rates?.replyRate ?? '—'}` : '—'}
+          sub={pr ? `Réponses: ${pr.rates?.response ?? '—'}%` : '—'}
           accent="green"
         />
         <KpiCard
@@ -233,8 +233,8 @@ export default function DashboardPage() {
         />
         <KpiCard
           label="Budget IA"
-          value={budget ? `${budget.used.toFixed(3)}€` : '—'}
-          sub={budget ? `Limite: ${budget.daily}€/jour` : '—'}
+          value={budget ? `${budget.spentEur.toFixed(3)}€` : '—'}
+          sub={budget ? `Limite: ${budget.budgetEur}€/jour` : '—'}
           accent={budgetUsed > 85 ? 'red' : budgetUsed > 60 ? 'yellow' : 'green'}
           progress={budgetUsed}
         />
@@ -278,11 +278,11 @@ export default function DashboardPage() {
             </span>
           </div>
           <div className="flex flex-wrap gap-2">
-            {(st.scheduler?.jobs ?? []).map((job: { name: string; schedule: string }) => (
+            {(st.scheduler?.jobs ?? []).map(job => (
               <div key={job.name} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs"
                 style={{ background: 'var(--bg-hover)', color: 'var(--text-muted)' }}>
                 <span style={{ color: 'var(--text-primary)' }}>{job.name}</span>
-                <span className="font-mono">{job.schedule}</span>
+                <span className="font-mono">{job.cron}</span>
               </div>
             ))}
           </div>
