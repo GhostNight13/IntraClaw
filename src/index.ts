@@ -12,6 +12,7 @@ import { rateLimiter } from './utils/rate-limiter';
 import { costTracker } from './utils/cost-tracker';
 import { AgentTask } from './types';
 import { runTask } from './agents/coordinator';
+import { initTelegram } from './channels/telegram';
 
 // ─── Task handler (delegated to coordinator) ──────────────────────────────────
 
@@ -50,6 +51,9 @@ async function main(): Promise<void> {
   // 3. Register task handler and start scheduler
   registerTaskHandler(handleTask);
   startScheduler();
+
+  // 4. Init Telegram channel (no-op if token not set)
+  initTelegram();
 
   logger.info('Main', 'IntraClaw started — scheduler active (Europe/Brussels)');
   logger.info('Main', 'Waiting for scheduled tasks... Press Ctrl+C to stop.');
