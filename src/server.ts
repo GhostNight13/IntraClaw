@@ -47,6 +47,16 @@ export function broadcast(event: WSEvent): void {
   }
 }
 
+/** Broadcast arbitrary JSON to all connected WebSocket clients (used by autonomous loop). */
+export function broadcastWS(data: Record<string, unknown>): void {
+  const payload = JSON.stringify(data);
+  for (const ws of clients) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(payload);
+    }
+  }
+}
+
 // ─── Express app ──────────────────────────────────────────────────────────────
 
 const app = express();
