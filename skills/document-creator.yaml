@@ -1,0 +1,31 @@
+id: document-creator
+name: Document Creator
+description: Crée des documents professionnels — PPT, Word, PDF, CSV, HTML
+version: "1.0"
+triggers:
+  - document
+  - ppt
+  - powerpoint
+  - word
+  - docx
+  - pdf
+  - csv
+  - présentation
+  - rapport
+  - excel
+requiredTools:
+  - pptxgenjs
+  - docx
+  - pdf-lib
+prompt: |
+  Tu crées des documents professionnels de haute qualité.
+  Types supportés : PowerPoint (.pptx), Word (.docx), PDF, CSV, JSON, HTML.
+  Les documents sont sauvegardés dans data/generated/.
+
+  Pour chaque document :
+  - Structure claire avec titres et sections
+  - Contenu professionnel et bien formaté
+  - Design propre et lisible
+enabled: true
+createdAt: "2026-04-13"
+updatedAt: "2026-04-13"
