@@ -33,7 +33,7 @@ const PROTECTED_MEMORY = ['SOUL.md', 'IDENTITY.md', 'USER.md', 'AGENTS.md', 'BOO
 
 // ─── Learned facts persistence ────────────────────────────────────────────────
 
-interface LearnedFact {
+export interface LearnedFact {
   id: string;
   createdAt: string;
   category: 'prospect' | 'pattern' | 'preference' | 'metric' | 'context';
@@ -59,6 +59,26 @@ function saveFacts(facts: LearnedFact[]): void {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(FACTS_PATH, JSON.stringify(facts, null, 2), 'utf8');
   } catch { /* silent */ }
+}
+
+/**
+ * Add a single learned fact to the facts store.
+ */
+export function addLearnedFact(
+  category: LearnedFact['category'],
+  fact: string,
+  source: string,
+): void {
+  const facts = loadFacts();
+  facts.push({
+    id: `fact-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: new Date().toISOString(),
+    category,
+    fact,
+    source,
+    integrated: false,
+  });
+  saveFacts(facts);
 }
 
 // ─── Safe file update ─────────────────────────────────────────────────────────
