@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Bot, KanbanSquare, History,
-  MessageSquare, Settings, Bell,
+  MessageSquare, Settings, Bell, Mic,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +14,7 @@ const NAV = [
   { href: '/pipeline',       icon: KanbanSquare,    label: 'Pipeline'      },
   { href: '/history',        icon: History,         label: 'Historique'    },
   { href: '/chat',           icon: MessageSquare,   label: 'Chat'          },
+  { href: '/voice',          icon: Mic,             label: 'Voice JARVIS'  },
   { href: '/settings',       icon: Settings,        label: 'Paramètres'    },
   { href: '/notifications',  icon: Bell,            label: 'Notifications' },
 ];

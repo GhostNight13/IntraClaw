@@ -17,6 +17,8 @@ import {
   applyProposal, getImprovementStats,
 } from './agents/self-improvement';
 import { getMemoryStats, updateHeartbeat } from './memory/enhanced';
+import { handleVoiceCommand } from './tools/voice-handler';
+import { synthesize } from './tools/tts';
 import {
   takeScreenshot, clickAt, typeText, pressKey,
   openApp, closeApp, focusApp, getRunningApps,
@@ -283,6 +285,33 @@ app.post('/api/blocked-tasks/:id/resolve', (req: Request, res: Response) => {
   }
 });
 
+// ─── POST /api/voice ─────────────────────────────────────────────────────────
+
+app.post('/api/voice', async (req: Request, res: Response) => {
+  const { transcript } = req.body as { transcript?: string };
+  if (!transcript?.trim()) { res.status(400).json({ error: 'transcript required' }); return; }
+
+  const response = await handleVoiceCommand({ transcript });
+
+  if (response.audioBase64) {
+    res.json({
+      reply:      response.reply,
+      audio:      response.audioBase64,
+      format:     'mp3',
+      provider:   response.provider,
+      durationMs: response.durationMs,
+      model:      response.model,
+    });
+  } else {
+    res.json({
+      reply:      response.reply,
+      provider:   response.provider,
+      durationMs: response.durationMs,
+      model:      response.model,
+    });
+  }
+});
+
 // ─── GET /api/memory ─────────────────────────────────────────────────────────
 
 app.get('/api/memory', (_req: Request, res: Response) => {
@@ -485,6 +514,43 @@ export function startServer(): void {
       budget:  costTracker.getStatus(),
       paused:  schedulerPaused,
     }));
+
+    // ─── Voice WebSocket messages ──────────────────────────────────────────
+    ws.on('message', async (data) => {
+      try {
+        const msg = JSON.parse(data.toString()) as { type: string; transcript?: string; text?: string };
+
+        if (msg.type === 'voice') {
+          const transcript = msg.transcript ?? msg.text ?? '';
+          if (!transcript.trim()) return;
+
+          // Acknowledge immediately
+          ws.send(JSON.stringify({ type: 'voice_thinking', transcript }));
+
+          const response = await handleVoiceCommand({ transcript });
+
+          // Send text reply
+          ws.send(JSON.stringify({
+            type:      'voice_reply',
+            transcript,
+            reply:     response.reply,
+            provider:  response.provider,
+            durationMs: response.durationMs,
+            model:     response.model,
+          }));
+
+          // Send audio as base64 if available
+          if (response.audioBase64) {
+            ws.send(JSON.stringify({
+              type:    'voice_audio',
+              audio:   response.audioBase64,
+              format:  'mp3',
+              provider: response.provider,
+            }));
+          }
+        }
+      } catch { /* ignore malformed messages */ }
+    });
 
     ws.on('close', () => {
       clients.delete(ws);
