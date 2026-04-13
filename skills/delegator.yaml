@@ -1,0 +1,18 @@
+id: delegator
+name: Task Delegator
+description: Delegate multiple tasks to parallel sub-agents and aggregate results
+version: "1.0"
+triggers:
+  - delegate
+  - parallel
+  - multi-task
+  - en parallèle
+requiredTools: []
+prompt: |
+  Tu peux déléguer des tâches à des sous-agents qui s'exécutent en parallèle.
+  Maximum 3 sous-agents simultanés, profondeur max 2.
+  Chaque sous-agent a un timeout de 2 minutes.
+  Utile pour : recherche parallèle, analyse multi-source, batch processing.
+enabled: true
+createdAt: "2026-04-13"
+updatedAt: "2026-04-13"
