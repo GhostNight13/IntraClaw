@@ -1,15 +1,80 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, AlertTriangle } from 'lucide-react';
 import { KpiCard } from '@/components/KpiCard';
 import { AgentStatusBadge } from '@/components/AgentStatusBadge';
-import { api, StatusResponse, ProspectsResponse, Action } from '@/lib/api';
+import { api, StatusResponse, ProspectsResponse, Action, BlockedTask } from '@/lib/api';
 
 interface DashboardData {
   status: StatusResponse | null;
   prospects: ProspectsResponse | null;
   actions: Action[];
+  blockedTasks: BlockedTask[];
+}
+
+/* ─── Blocked Tasks Widget ──────────────────────────────────────────────────── */
+function BlockedTasksWidget({ tasks, onResolve }: {
+  tasks: BlockedTask[];
+  onResolve: (id: number, command: 'retry' | 'skip' | 'abort') => void;
+}) {
+  if (tasks.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border flex flex-col"
+      style={{ background: 'var(--bg-card)', borderColor: 'var(--accent-red)40' }}>
+      <div className="flex items-center gap-2 px-5 py-4 border-b"
+        style={{ borderColor: 'var(--accent-red)30', background: 'var(--accent-red)10' }}>
+        <AlertTriangle size={14} style={{ color: 'var(--accent-red)' }} />
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--accent-red)' }}>
+          Tâches bloquées — action requise ({tasks.length})
+        </span>
+      </div>
+      <div className="flex flex-col divide-y" style={{ borderColor: 'var(--border)' }}>
+        {tasks.map(t => (
+          <div key={t.id} className="flex items-start justify-between gap-4 px-5 py-4"
+            style={{ borderColor: 'var(--border)' }}>
+            <div className="flex flex-col gap-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono px-1.5 py-0.5 rounded"
+                  style={{ background: 'var(--accent-red)20', color: 'var(--accent-red)' }}>
+                  #{t.id}
+                </span>
+                <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                  {t.task}
+                </span>
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  {t.attempts} tentative{t.attempts > 1 ? 's' : ''}
+                </span>
+              </div>
+              <span className="text-xs truncate" style={{ color: 'var(--accent-red)' }}>{t.reason}</span>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {new Date(t.created_at).toLocaleString('fr-BE')}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {(['retry', 'skip', 'abort'] as const).map(cmd => (
+                <button key={cmd}
+                  onClick={() => onResolve(t.id, cmd)}
+                  className="px-3 py-1 rounded-lg text-xs font-medium transition-opacity hover:opacity-80"
+                  style={{
+                    background: cmd === 'retry' ? 'var(--accent-blue)20'
+                              : cmd === 'abort' ? 'var(--accent-red)20'
+                              : 'var(--bg-hover)',
+                    color: cmd === 'retry' ? 'var(--accent-blue)'
+                         : cmd === 'abort' ? 'var(--accent-red)'
+                         : 'var(--text-muted)',
+                    border: '1px solid transparent',
+                  }}>
+                  {cmd === 'retry' ? '🔄 Retry' : cmd === 'abort' ? '🛑 Abort' : '⏭ Skip'}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 const AGENTS = [
@@ -125,23 +190,34 @@ function ActivityFeed({ actions }: { actions: Action[] }) {
 }
 
 export default function DashboardPage() {
-  const [data, setData] = useState<DashboardData>({ status: null, prospects: null, actions: [] });
+  const [data, setData] = useState<DashboardData>({ status: null, prospects: null, actions: [], blockedTasks: [] });
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   const load = useCallback(async () => {
-    const [s, p, a] = await Promise.allSettled([
+    const [s, p, a, b] = await Promise.allSettled([
       api.status(),
       api.prospects(),
       api.actions(10),
+      api.blockedTasks(),
     ]);
     setData({
-      status:    s.status === 'fulfilled' ? s.value : null,
-      prospects: p.status === 'fulfilled' ? p.value : null,
-      actions:   a.status === 'fulfilled' ? (a.value as { actions: Action[] }).actions ?? [] : [],
+      status:       s.status === 'fulfilled' ? s.value : null,
+      prospects:    p.status === 'fulfilled' ? p.value : null,
+      actions:      a.status === 'fulfilled' ? (a.value as { actions: Action[] }).actions ?? [] : [],
+      blockedTasks: b.status === 'fulfilled' ? b.value.blockedTasks : [],
     });
     setLastRefresh(new Date());
     setLoading(false);
+  }, []);
+
+  const handleResolveBlocked = useCallback(async (id: number, command: 'retry' | 'skip' | 'abort') => {
+    try {
+      await api.resolveBlocked(id, command);
+      // Refresh blocked tasks immediately
+      const b = await api.blockedTasks();
+      setData(prev => ({ ...prev, blockedTasks: b.blockedTasks }));
+    } catch { /* silent */ }
   }, []);
 
   useEffect(() => {
@@ -159,9 +235,12 @@ export default function DashboardPage() {
   const convRate = totalProspects > 0 ? ((converted / totalProspects) * 100).toFixed(1) : '0';
 
   const budget = st?.budget;
-  const budgetUsed = budget ? (budget.spentEur / budget.budgetEur) * 100 : 0;
+  const isSubscription = budget?.isSubscription ?? false;
+  const budgetUsed = (budget && !isSubscription && budget.budgetEur > 0)
+    ? (budget.spentEur / budget.budgetEur) * 100
+    : 0;
   const claudeUsed = st?.rateLimits?.claude?.count ?? 0;
-  const claudeMax = 50;
+  const claudeMax = st?.rateLimits?.claude?.max ?? null; // null = unlimited
 
   const today = new Date().toLocaleDateString('fr-BE', {
     weekday: 'long', day: 'numeric', month: 'long',
@@ -226,16 +305,16 @@ export default function DashboardPage() {
         />
         <KpiCard
           label="Claude API"
-          value={`${claudeUsed}/${claudeMax}`}
-          sub="appels aujourd'hui"
-          accent={claudeUsed > 40 ? 'red' : claudeUsed > 30 ? 'yellow' : 'blue'}
-          progress={(claudeUsed / claudeMax) * 100}
+          value={claudeMax === null ? `${claudeUsed} appels` : `${claudeUsed}/${claudeMax}`}
+          sub={claudeMax === null ? 'Max subscription — illimité' : "appels aujourd'hui"}
+          accent="blue"
+          progress={claudeMax === null ? 0 : (claudeUsed / claudeMax) * 100}
         />
         <KpiCard
           label="Budget IA"
           value={budget ? `${budget.spentEur.toFixed(3)}€` : '—'}
-          sub={budget ? `Limite: ${budget.budgetEur}€/jour` : '—'}
-          accent={budgetUsed > 85 ? 'red' : budgetUsed > 60 ? 'yellow' : 'green'}
+          sub={isSubscription ? 'Abonnement Max (illimité)' : budget ? `Limite: ${budget.budgetEur}€/jour` : '—'}
+          accent="green"
           progress={budgetUsed}
         />
       </div>
@@ -257,6 +336,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Blocked tasks — shown only when there are pending escalations */}
+      <BlockedTasksWidget tasks={data.blockedTasks} onResolve={handleResolveBlocked} />
 
       {/* Activity feed */}
       <ActivityFeed actions={data.actions} />

@@ -11,6 +11,18 @@ import { buildSystemPrompt } from './memory/core';
 import { ask } from './ai';
 import { getRecentActions, getUnreadNotifications, markNotificationsRead, getDb } from './db';
 import { AgentTask, ProspectStatus } from './types';
+import { getPendingBlockedTasks, resolveBlockedTask, getAutonomousStats } from './agents/autonomous-runner';
+import {
+  getPendingProposals, getProposal, approveProposal, rejectProposal,
+  applyProposal, getImprovementStats,
+} from './agents/self-improvement';
+import { getMemoryStats, updateHeartbeat } from './memory/enhanced';
+import {
+  takeScreenshot, clickAt, typeText, pressKey,
+  openApp, closeApp, focusApp, getRunningApps,
+  runAppleScriptFile, getClipboard, setClipboard,
+  showNotification, getScreenBounds,
+} from './tools/computer-use';
 
 const PORT = parseInt(process.env.API_PORT ?? '3001', 10);
 let schedulerPaused = false;
@@ -234,6 +246,208 @@ app.post('/api/scheduler/resume', (_req: Request, res: Response) => {
   res.json({ ok: true, state: 'running' });
 });
 
+// ─── GET /api/blocked-tasks ───────────────────────────────────────────────────
+
+app.get('/api/blocked-tasks', (_req: Request, res: Response) => {
+  try {
+    const tasks = getPendingBlockedTasks();
+    const stats = getAutonomousStats();
+    res.json({ blockedTasks: tasks, stats });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ─── POST /api/blocked-tasks/:id/resolve ─────────────────────────────────────
+
+app.post('/api/blocked-tasks/:id/resolve', (req: Request, res: Response) => {
+  const id = parseInt(String(req.params['id'] ?? ''), 10);
+  const { command, note = '' } = req.body as { command?: string; note?: string };
+
+  if (isNaN(id)) {
+    res.status(400).json({ error: 'Invalid id' });
+    return;
+  }
+  if (!command || !['retry', 'skip', 'abort'].includes(command)) {
+    res.status(400).json({ error: 'command must be retry | skip | abort' });
+    return;
+  }
+
+  try {
+    resolveBlockedTask(id, command as 'retry' | 'skip' | 'abort', note);
+    logger.info('Server', `Blocked task #${id} resolved via API: ${command}`);
+    broadcast({ type: 'notification', message: `Tâche bloquée #${id} débloquée: ${command}`, level: 'info' });
+    res.json({ ok: true, id, command });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ─── GET /api/memory ─────────────────────────────────────────────────────────
+
+app.get('/api/memory', (_req: Request, res: Response) => {
+  try {
+    res.json(getMemoryStats());
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ─── GET /api/improvements ───────────────────────────────────────────────────
+
+app.get('/api/improvements', (_req: Request, res: Response) => {
+  try {
+    const proposals = getPendingProposals();
+    const stats     = getImprovementStats();
+    res.json({ proposals, stats });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ─── GET /api/improvements/:id ───────────────────────────────────────────────
+
+app.get('/api/improvements/:id', (req: Request, res: Response) => {
+  const id = String(req.params['id'] ?? '');
+  const proposal = getProposal(id);
+  if (!proposal) { res.status(404).json({ error: 'Not found' }); return; }
+  res.json({ proposal });
+});
+
+// ─── POST /api/improvements/:id/approve ──────────────────────────────────────
+
+app.post('/api/improvements/:id/approve', async (req: Request, res: Response) => {
+  const id = String(req.params['id'] ?? '');
+  const proposal = getProposal(id);
+  if (!proposal) { res.status(404).json({ error: 'Not found' }); return; }
+
+  approveProposal(id);
+  logger.info('Server', `Proposal ${id} approved via API — applying...`);
+
+  try {
+    const result = await applyProposal(id);
+    broadcast({ type: 'notification', message: `Amélioration appliquée: ${proposal.title}`, level: 'info' });
+    res.json({ ok: result.success, result });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ─── POST /api/improvements/:id/reject ───────────────────────────────────────
+
+app.post('/api/improvements/:id/reject', (req: Request, res: Response) => {
+  const id = String(req.params['id'] ?? '');
+  const { reason = '' } = req.body as { reason?: string };
+  const proposal = getProposal(id);
+  if (!proposal) { res.status(404).json({ error: 'Not found' }); return; }
+
+  rejectProposal(id, reason);
+  broadcast({ type: 'notification', message: `Proposition rejetée: ${proposal.title}`, level: 'warn' });
+  res.json({ ok: true });
+});
+
+// ─── POST /api/computer-use/screenshot ───────────────────────────────────────
+
+app.post('/api/computer-use/screenshot', async (_req: Request, res: Response) => {
+  try {
+    const result = await takeScreenshot(true);
+    if (!result.success) {
+      res.status(500).json({ error: result.error });
+      return;
+    }
+    res.json({ ok: true, path: result.path, base64: result.base64 });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ─── POST /api/computer-use/click ────────────────────────────────────────────
+
+app.post('/api/computer-use/click', async (req: Request, res: Response) => {
+  const { x, y, button = 'left' } = req.body as { x?: number; y?: number; button?: 'left' | 'right' };
+  if (x == null || y == null) { res.status(400).json({ error: 'x and y required' }); return; }
+
+  const result = await clickAt(x, y, button);
+  res.json(result);
+});
+
+// ─── POST /api/computer-use/type ─────────────────────────────────────────────
+
+app.post('/api/computer-use/type', async (req: Request, res: Response) => {
+  const { text } = req.body as { text?: string };
+  if (!text) { res.status(400).json({ error: 'text required' }); return; }
+
+  const result = await typeText(text);
+  res.json(result);
+});
+
+// ─── POST /api/computer-use/key ──────────────────────────────────────────────
+
+app.post('/api/computer-use/key', async (req: Request, res: Response) => {
+  const { key, modifiers = [] } = req.body as { key?: string; modifiers?: string[] };
+  if (!key) { res.status(400).json({ error: 'key required' }); return; }
+
+  const result = await pressKey(key, modifiers);
+  res.json(result);
+});
+
+// ─── POST /api/computer-use/app ───────────────────────────────────────────────
+
+app.post('/api/computer-use/app', async (req: Request, res: Response) => {
+  const { action, name } = req.body as { action?: 'open' | 'close' | 'focus'; name?: string };
+  if (!name) { res.status(400).json({ error: 'name required' }); return; }
+
+  let result;
+  if (action === 'close')       result = await closeApp(name);
+  else if (action === 'focus')  result = await focusApp(name);
+  else                          result = await openApp(name);
+
+  res.json(result);
+});
+
+// ─── GET /api/computer-use/apps ──────────────────────────────────────────────
+
+app.get('/api/computer-use/apps', async (_req: Request, res: Response) => {
+  const apps = await getRunningApps();
+  res.json({ apps });
+});
+
+// ─── POST /api/computer-use/script ───────────────────────────────────────────
+
+app.post('/api/computer-use/script', async (req: Request, res: Response) => {
+  const { script } = req.body as { script?: string };
+  if (!script) { res.status(400).json({ error: 'script required' }); return; }
+
+  const result = await runAppleScriptFile(script);
+  res.json(result);
+});
+
+// ─── GET /api/computer-use/screen ────────────────────────────────────────────
+
+app.get('/api/computer-use/screen', async (_req: Request, res: Response) => {
+  const bounds = await getScreenBounds();
+  res.json(bounds);
+});
+
+// ─── GET /api/computer-use/clipboard ─────────────────────────────────────────
+
+app.get('/api/computer-use/clipboard', async (_req: Request, res: Response) => {
+  const text = await getClipboard();
+  res.json({ text });
+});
+
+// ─── POST /api/computer-use/notify ───────────────────────────────────────────
+
+app.post('/api/computer-use/notify', async (req: Request, res: Response) => {
+  const { title = 'IntraClaw', message, sound = false } = req.body as {
+    title?: string; message?: string; sound?: boolean;
+  };
+  if (!message) { res.status(400).json({ error: 'message required' }); return; }
+
+  await showNotification(title, message, sound);
+  res.json({ ok: true });
+});
+
 // ─── Health check ─────────────────────────────────────────────────────────────
 
 app.get('/api/health', (_req: Request, res: Response) => {
@@ -247,6 +461,11 @@ export function startServer(): void {
   try { getDb(); } catch (err) {
     logger.error('Server', 'DB init failed', err);
   }
+
+  // Module 4: update HEARTBEAT on startup
+  updateHeartbeat().catch(err => {
+    logger.warn('Server', 'Initial HEARTBEAT update failed (non-fatal)', err instanceof Error ? err.message : err);
+  });
 
   const httpServer = createServer(app);
 

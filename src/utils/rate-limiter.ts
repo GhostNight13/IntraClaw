@@ -9,7 +9,7 @@ interface ServiceConfig {
 }
 
 const SERVICE_CONFIGS: Record<ServiceName, ServiceConfig> = {
-  claude:   { maxPerDay: 50 },
+  claude:   { maxPerDay: Infinity }, // Max subscription — no artificial cap; Ollama fallback triggered by real rate-limit errors only
   gmail:    { maxPerDay: 50 },
   scraping: { maxPerDay: 100 },
 };

@@ -65,7 +65,7 @@ async function gatherStats(): Promise<RawStats> {
       scraping: ratioStatus.scraping.count,
     },
     costEur:               cost.spentEur,
-    costRemainingEur:      cost.remainingEur,
+    costRemainingEur:      0, // Max subscription — no remaining budget concept
   };
 }
 

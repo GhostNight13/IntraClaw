@@ -13,6 +13,8 @@ import { runProspectionAgent } from './prospection';
 import { runColdEmailAgent } from './cold-email';
 import { runContentAgent } from './content';
 import { runReportingAgent } from './reporting';
+import { analyzeAndPropose } from './self-improvement';
+import { runEnhancedMemory } from '../memory/enhanced';
 import { AgentTask, ProspectStatus } from '../types';
 import type { AgentResult } from '../types';
 
@@ -73,7 +75,7 @@ Tu es IntraClaw. C'est le matin, génère le briefing de la journée pour Ayman.
 
 CONTEXTE :
 - Météo Bruxelles : ${weather ? formatWeatherFr(weather) : 'Non disponible'}
-- Budget API restant : ${costStatus.remainingEur.toFixed(2)}€ / ${costStatus.budgetEur}€
+- Abonnement Max actif (${costStatus.callCount} appels aujourd'hui, ~${costStatus.spentEur.toFixed(2)}€ equiv.)
 - Appels Claude : ${ratioStatus.claude.remaining}/50 restants
 - Prospects ayant répondu (à traiter) : ${repliedProspects.length}
 - Objectif de la semaine : ${strategy.weeklyGoal}
@@ -291,6 +293,14 @@ export async function runTask(task: AgentTask): Promise<AgentResult> {
     case AgentTask.MAINTENANCE: {
       const report = await runReportingAgent(true);
       await runSelfImprovement();
+      // Module 3: analyze logs and propose code improvements
+      await analyzeAndPropose().catch(err =>
+        logger.warn('Coordinator', 'Self-improvement analysis failed (non-fatal)', err instanceof Error ? err.message : err)
+      );
+      // Module 4: update heartbeat + integrate learned facts
+      await runEnhancedMemory().catch(err =>
+        logger.warn('Coordinator', 'Enhanced memory cycle failed (non-fatal)', err instanceof Error ? err.message : err)
+      );
       return report;
     }
 

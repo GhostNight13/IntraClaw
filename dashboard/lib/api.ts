@@ -20,10 +20,11 @@ export interface StatusResponse {
     scraping: { count: number; max: number; remaining: number };
   };
   budget: {
-    spentEur: number;
-    budgetEur: number;
-    remainingEur: number;
-    callCount: number;
+    spentEur:       number;
+    budgetEur:      number;
+    remainingEur:   number;
+    callCount:      number;
+    isSubscription?: boolean;
   };
   uptime: number;
   timestamp: string;
@@ -67,12 +68,36 @@ export interface NotificationsResponse {
   unread: number;
 }
 
+export interface BlockedTask {
+  id: number;
+  task: string;
+  reason: string;
+  attempts: number;
+  created_at: string;
+}
+
+export interface BlockedTasksResponse {
+  blockedTasks: BlockedTask[];
+  stats: {
+    totalTasksRun: number;
+    totalSuccesses: number;
+    totalFailures: number;
+    lastUpdated: string;
+  };
+}
+
 export const api = {
   status:        ()          => apiFetch<StatusResponse>('/api/status'),
   prospects:     ()          => apiFetch<ProspectsResponse>('/api/prospects'),
   actions:       (limit = 50) => apiFetch<ActionsResponse>(`/api/actions?limit=${limit}`),
   notifications: ()          => apiFetch<NotificationsResponse>('/api/notifications'),
   markRead:      ()          => apiFetch<{ ok: boolean }>('/api/notifications/read', { method: 'POST' }),
+  blockedTasks:  ()          => apiFetch<BlockedTasksResponse>('/api/blocked-tasks'),
+  resolveBlocked: (id: number, command: 'retry' | 'skip' | 'abort', note = '') =>
+    apiFetch<{ ok: boolean; id: number; command: string }>(
+      `/api/blocked-tasks/${id}/resolve`,
+      { method: 'POST', body: JSON.stringify({ command, note }) }
+    ),
   chat:          (message: string) =>
     apiFetch<{ reply: string; model: string; tokens: number; durationMs: number }>(
       '/api/chat', { method: 'POST', body: JSON.stringify({ message }) }

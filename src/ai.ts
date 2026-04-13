@@ -4,7 +4,7 @@ import * as crypto from 'crypto';
 import { logger } from './utils/logger';
 import { rateLimiter } from './utils/rate-limiter';
 import { costTracker } from './utils/cost-tracker';
-import { callClaude } from './claude';
+import { callClaude, ClaudeRateLimitError } from './claude';
 import { callGemma, callLlama, isOllamaAvailable } from './ollama';
 import type { AIRequest, AIResponse } from './types';
 
@@ -89,30 +89,24 @@ export async function ask(request: AIRequest): Promise<AIResponse> {
 
   incrementDailyCount();
 
-  // 2. Try Claude first
-  const claudeAllowed = rateLimiter.check('claude');
-  const budgetOk      = costTracker.canAfford(1500, 800);
-
-  if (claudeAllowed && budgetOk) {
-    try {
-      const response = await callClaude(request);
-      const { budgetExceeded } = costTracker.record(response.inputTokens, response.outputTokens);
-      if (budgetExceeded) {
-        logger.warn('AI', 'Budget exceeded after Claude call — future calls will use local models');
-      }
-      if (useCache) writeCache(getCacheKey(request), response);
-      return response;
-    } catch (err) {
-      logger.warn('AI', 'Claude failed, falling back to Gemma', err instanceof Error ? err.message : err);
+  // 2. Try Claude first (uses Max subscription — no artificial cap)
+  rateLimiter.check('claude'); // increments counter for observability only, never blocks
+  try {
+    const response = await callClaude(request);
+    costTracker.record(response.inputTokens, response.outputTokens); // tracking only
+    if (useCache) writeCache(getCacheKey(request), response);
+    return response;
+  } catch (err) {
+    if (err instanceof ClaudeRateLimitError) {
+      // Real Anthropic rate limit — fall through to Ollama
+      logger.warn('AI', 'Claude rate limited by Anthropic — falling back to Ollama', err.message);
+    } else {
+      // Other error (timeout, auth, etc.) — still try Ollama as last resort
+      logger.warn('AI', 'Claude failed — falling back to Ollama', err instanceof Error ? err.message : err);
     }
-  } else {
-    logger.info('AI', 'Claude skipped', {
-      rateLimitOk: claudeAllowed,
-      budgetOk,
-    });
   }
 
-  // 3. Try Gemma 4 (Ollama)
+  // 3. Try Gemma 3 (Ollama) — only reached on real Claude failure
   const ollamaUp = await isOllamaAvailable();
   if (ollamaUp) {
     try {

@@ -12,14 +12,15 @@ import { rateLimiter } from './utils/rate-limiter';
 import { costTracker } from './utils/cost-tracker';
 import { AgentTask } from './types';
 import { runTask } from './agents/coordinator';
-import { initTelegram } from './channels/telegram';
+import { runAutonomous } from './agents/autonomous-runner';
+import { initTelegram, sendTelegramMessage } from './channels/telegram';
 import { startServer } from './server';
 
-// ─── Task handler (delegated to coordinator) ──────────────────────────────────
+// ─── Task handler (delegated to coordinator via autonomous loop) ──────────────
 
 async function handleTask(task: AgentTask): Promise<void> {
-  logger.info('Main', `Dispatching task: ${task}`);
-  const result = await runTask(task);
+  logger.info('Main', `Dispatching task (autonomous): ${task}`);
+  const result = await runAutonomous(task, runTask, sendTelegramMessage);
 
   addMessage(
     'assistant',

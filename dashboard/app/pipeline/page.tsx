@@ -34,17 +34,33 @@ const COLUMNS: { id: ColumnId; label: string; color: string }[] = [
   { id: 'rejected',    label: 'Livré',     color: 'var(--text-muted)'    },
 ];
 
-/* ─── Mock seed (replaced by API when available) ─────────────── */
-function seedProspects(): Prospect[] {
+/* ─── API fetch ───────────────────────────────────────────────── */
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapProspect(p: any, status: ColumnId): Prospect {
+  return {
+    id:          p.id ?? String(Math.random()),
+    company:     p.businessName ?? p.company ?? 'Inconnu',
+    city:        p.location ?? p.city,
+    email:       p.email,
+    pagespeed:   p.pageSpeedScore ?? p.pagespeed,
+    contactedAt: p.lastContactedAt ?? p.contactedAt,
+    status,
+  };
+}
+
+async function fetchProspects(): Promise<Prospect[]> {
+  const res = await fetch(`${BASE}/api/prospects`);
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = await res.json() as { prospects?: Record<string, any[]> };
+  const pMap = data.prospects ?? {};
   return [
-    { id: '1', company: 'Plomberie Dupont',  city: 'Bruxelles', email: 'contact@dupont.be',  pagespeed: 42, status: 'new'         },
-    { id: '2', company: 'Électricité Maes',  city: 'Liège',     email: 'info@maes.be',        pagespeed: 68, status: 'new'         },
-    { id: '3', company: 'Toiture Martin',    city: 'Namur',     email: 'martin@toiture.be',   pagespeed: 31, contactedAt: '2026-04-01', status: 'contacted' },
-    { id: '4', company: 'Menuiserie Leroy',  city: 'Gand',      email: 'leroy@menuiserie.be', pagespeed: 55, contactedAt: '2026-04-02', status: 'contacted' },
-    { id: '5', company: 'Peinture Renard',   city: 'Anvers',    email: 'renard@peinture.be',  pagespeed: 29, contactedAt: '2026-03-28', status: 'replied'   },
-    { id: '6', company: 'Carrelage Simon',   city: 'Bruxelles', email: 'simon@carrelage.be',  pagespeed: 72, status: 'demo_booked' },
-    { id: '7', company: 'Jardinage Thibaut', city: 'Louvain',   email: 'thibaut@jardins.be',  pagespeed: 48, status: 'converted'  },
-    { id: '8', company: 'Chauffage Hanot',   city: 'Charleroi', email: 'hanot@chauffage.be',  pagespeed: 61, status: 'rejected'   },
+    ...(pMap['new']       ?? []).map((p: any) => mapProspect(p, 'new')),
+    ...(pMap['contacted'] ?? []).map((p: any) => mapProspect(p, 'contacted')),
+    ...(pMap['replied']   ?? []).map((p: any) => mapProspect(p, 'replied')),
+    ...(pMap['converted'] ?? []).map((p: any) => mapProspect(p, 'converted')),
   ];
 }
 
@@ -159,10 +175,20 @@ function KanbanColumn({
 export default function PipelinePage() {
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    // Seed with mock data; replace with api.prospects() if backend exposes prospect list
-    setProspects(seedProspects());
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchProspects();
+      setProspects(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur API');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -218,12 +244,15 @@ export default function PipelinePage() {
             {total > 0 && ` · ${((converted / total) * 100).toFixed(0)}% taux conversion`}
           </p>
         </div>
-        <button onClick={load}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm border"
-          style={{ background: 'var(--bg-card)', color: 'var(--text-muted)', borderColor: 'var(--border)' }}>
-          <RefreshCw size={14} />
-          Rafraîchir
-        </button>
+        <div className="flex items-center gap-3">
+          {error && <span className="text-xs" style={{ color: 'var(--accent-red)' }}>{error}</span>}
+          <button onClick={load}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm border"
+            style={{ background: 'var(--bg-card)', color: 'var(--text-muted)', borderColor: 'var(--border)' }}>
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            Rafraîchir
+          </button>
+        </div>
       </div>
 
       {/* Board */}
