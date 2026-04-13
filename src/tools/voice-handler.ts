@@ -5,7 +5,7 @@
 
 import { logger } from '../utils/logger';
 import { ask } from '../ai';
-import { buildSystemPrompt } from '../memory/core';
+import { buildCompressedPrompt } from '../memory/core';
 import { synthesize, TTSResult } from './tts';
 import { AgentTask } from '../types';
 
@@ -54,7 +54,7 @@ export async function handleVoiceCommand(req: VoiceRequest): Promise<VoiceRespon
     // 1. Claude Haiku — réponse rapide
     const aiResponse = await ask({
       messages: [
-        { role: 'system', content: JARVIS_SYSTEM + '\n\n' + buildSystemPrompt() },
+        { role: 'system', content: JARVIS_SYSTEM + '\n\n' + buildCompressedPrompt() },
         { role: 'user',   content: req.transcript },
       ],
       maxTokens:   150,

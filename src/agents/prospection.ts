@@ -1,6 +1,6 @@
 import { logger } from '../utils/logger';
 import { ask } from '../ai';
-import { buildSystemPrompt } from '../memory/core';
+import { buildCompressedPrompt } from '../memory/core';
 import { scrapeGoogleMaps, getRandomBelgiumTarget, BelgiumTarget } from '../tools/scraper';
 import { analyzeUrl, formatDiagnosisFr } from '../tools/pagespeed';
 import { verifyEmail } from '../tools/email-verify';
@@ -32,7 +32,7 @@ Pas d'explication, juste le JSON.
   try {
     const response = await ask({
       messages: [
-        { role: 'system', content: buildSystemPrompt() },
+        { role: 'system', content: buildCompressedPrompt() },
         { role: 'user',   content: prompt },
       ],
       maxTokens:   200,

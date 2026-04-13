@@ -1,8 +1,9 @@
 // src/reasoning/action-planner.ts
 import { ask } from '../ai';
-import { buildSystemPrompt } from '../memory/core';
+import { buildCompressedPrompt } from '../memory/core';
 import { PerceptionContext, LoopAction, LoopActionType, AgentTask, Goal } from '../types';
 import { getPrioritizedGoals } from './goal-manager';
+import { getSkillIndex } from '../skills/skill-loader';
 import { logger } from '../utils/logger';
 
 const ACTION_TYPE_TO_TASK: Partial<Record<LoopActionType, AgentTask>> = {
@@ -61,6 +62,9 @@ ${formatContext(ctx)}
 OBJECTIFS ACTIFS (par priorité) :
 ${formatGoals(goals)}
 
+SKILLS DISPONIBLES :
+${getSkillIndex()}
+
 RÈGLES DE DÉCISION :
 1. Si prospectRepliesCount > 0 → reply_check est URGENT (priorité absolue)
 2. Si heure entre 7h-8h ET isBusinessDay ET lastActionType !== 'morning_brief' aujourd'hui → morning_brief
@@ -78,7 +82,7 @@ Réponds UNIQUEMENT en JSON valide, sans markdown :
   try {
     const response = await ask({
       messages: [
-        { role: 'system', content: buildSystemPrompt() },
+        { role: 'system', content: buildCompressedPrompt() },
         { role: 'user',   content: prompt },
       ],
       maxTokens:   200,

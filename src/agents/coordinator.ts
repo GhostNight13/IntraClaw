@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 import { ask } from '../ai';
-import { buildSystemPrompt } from '../memory/core';
+import { buildSystemPrompt, buildCompressedPrompt } from '../memory/core';
 import { getWeatherBrussels, formatWeatherFr } from '../tools/weather';
 import { rateLimiter } from '../utils/rate-limiter';
 import { costTracker } from '../utils/cost-tracker';
@@ -104,7 +104,7 @@ Sois concis, positif, actionnable.
 
   const response = await ask({
     messages: [
-      { role: 'system', content: buildSystemPrompt() },
+      { role: 'system', content: buildCompressedPrompt() },
       { role: 'user',   content: prompt },
     ],
     maxTokens:   500,

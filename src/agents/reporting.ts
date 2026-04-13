@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 import { ask } from '../ai';
-import { buildSystemPrompt } from '../memory/core';
+import { buildCompressedPrompt } from '../memory/core';
 import { rateLimiter } from '../utils/rate-limiter';
 import { costTracker } from '../utils/cost-tracker';
 import { getProspectsByStatus } from '../tools/notion';
@@ -106,7 +106,7 @@ Sois concis, data-driven. Pas de blabla.
 
   const response = await ask({
     messages: [
-      { role: 'system', content: buildSystemPrompt() },
+      { role: 'system', content: buildCompressedPrompt() },
       { role: 'user',   content: prompt },
     ],
     maxTokens:   600,
@@ -144,7 +144,7 @@ Méthode OODA. Sois data-driven.
 
   const response = await ask({
     messages: [
-      { role: 'system', content: buildSystemPrompt() },
+      { role: 'system', content: buildCompressedPrompt() },
       { role: 'user',   content: prompt },
     ],
     maxTokens:   800,

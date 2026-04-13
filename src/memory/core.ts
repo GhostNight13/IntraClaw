@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 import type { MemoryFile } from '../types';
+import { buildCompressedSystemPrompt } from './context-compressor';
 
 const MEMORY_DIR = path.resolve(process.cwd(), 'memory');
 
@@ -95,4 +96,13 @@ export function reloadMemoryFile(filename: string): void {
 
 export function getLoadedMemory(): MemoryFile[] {
   return _loadedMemory;
+}
+
+/**
+ * Build a compressed system prompt for fast/cheap model calls.
+ * Static files are cached, dynamic files are compressed.
+ * ~75% token reduction vs buildSystemPrompt().
+ */
+export function buildCompressedPrompt(): string {
+  return buildCompressedSystemPrompt(4000); // ~4000 tokens max
 }
