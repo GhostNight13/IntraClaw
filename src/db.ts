@@ -97,3 +97,19 @@ export function getUnreadNotifications(): unknown[] {
 export function markNotificationsRead(): void {
   getDb().prepare(`UPDATE notifications SET read = 1 WHERE read = 0`).run();
 }
+
+export interface ActionRecord {
+  id: number;
+  task: string;
+  status: 'running' | 'success' | 'error';
+  timestamp: string;
+  durationMs: number | null;
+  error: string | null;
+}
+
+export function getActions(limit = 50): ActionRecord[] {
+  const db = getDb();
+  return db.prepare(
+    'SELECT id, task, status, created_at AS timestamp, duration_ms AS durationMs, error FROM agent_actions ORDER BY created_at DESC LIMIT ?'
+  ).all(limit) as ActionRecord[];
+}
