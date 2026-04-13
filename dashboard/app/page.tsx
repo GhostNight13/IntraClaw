@@ -6,6 +6,67 @@ import { KpiCard } from '@/components/KpiCard';
 import { AgentStatusBadge } from '@/components/AgentStatusBadge';
 import { api, StatusResponse, ProspectsResponse, Action, BlockedTask } from '@/lib/api';
 
+/* ─── Loop Status Hook & Widget ────────────────────────────────────────────── */
+function useLoopStatus() {
+  const [status, setStatus] = useState<{
+    running: boolean;
+    iteration: number;
+    lastActionType: string | null;
+    lastActionAt: string | null;
+    paused: boolean;
+    totalActionsToday: number;
+    consecutiveFailures: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const fetch_ = async () => {
+      try {
+        const res = await fetch('http://localhost:3001/api/loop/status');
+        if (res.ok) setStatus(await res.json());
+      } catch { /* silent */ }
+    };
+    fetch_();
+    const id = setInterval(fetch_, 10000);
+    return () => clearInterval(id);
+  }, []);
+
+  return status;
+}
+
+function LoopStatusWidget() {
+  const status = useLoopStatus();
+  if (!status) return null;
+
+  const color = status.paused ? 'text-yellow-400' : status.running ? 'text-green-400' : 'text-red-400';
+  const label = status.paused ? '⏸ Pause' : status.running ? '🟢 Actif' : '🔴 Arrete';
+
+  return (
+    <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 mb-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Boucle Autonome</p>
+          <p className={`text-lg font-bold mt-1 ${color}`}>{label}</p>
+        </div>
+        <div className="text-right text-sm text-gray-400">
+          <div>Iteration #{status.iteration}</div>
+          <div>{status.totalActionsToday} actions aujourd&apos;hui</div>
+          {status.consecutiveFailures > 0 && (
+            <div className="text-red-400">{status.consecutiveFailures} echecs consecutifs</div>
+          )}
+        </div>
+      </div>
+      {status.lastActionType && (
+        <div className="mt-3 text-xs text-gray-500">
+          Derniere action : <span className="text-gray-300">{status.lastActionType}</span>
+          {status.lastActionAt && (
+            <span> — {new Date(status.lastActionAt).toLocaleTimeString('fr-BE')}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface DashboardData {
   status: StatusResponse | null;
   prospects: ProspectsResponse | null;
@@ -264,6 +325,9 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6 max-w-7xl mx-auto">
+
+      {/* Autonomous Loop Status */}
+      <LoopStatusWidget />
 
       {/* Header */}
       <div className="flex items-center justify-between">
