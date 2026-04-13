@@ -146,6 +146,7 @@ RÈGLES ABSOLUES :
     maxTokens:   500,
     temperature: 0.75,
     task: AgentTask.COLD_EMAIL,
+    modelTier:   'balanced',  // Personalized emails need quality
   });
 
   const match = response.content.match(/\{[\s\S]*"subject"[\s\S]*"body"[\s\S]*\}/);
@@ -185,6 +186,7 @@ JSON strict :
     maxTokens:   400,
     temperature: 0.7,
     task: AgentTask.COLD_EMAIL,
+    modelTier:   'balanced',  // Follow-up emails need quality
   });
 
   const match = response.content.match(/\{[\s\S]*"subject"[\s\S]*"body"[\s\S]*\}/);

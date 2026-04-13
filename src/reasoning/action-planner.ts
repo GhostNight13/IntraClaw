@@ -84,6 +84,7 @@ Réponds UNIQUEMENT en JSON valide, sans markdown :
       maxTokens:   200,
       temperature: 0.2,
       task:        AgentTask.MORNING_BRIEF,
+      modelTier:   'fast',  // Simple JSON classification — cheap model
     });
 
     const jsonMatch = response.content.match(/\{[\s\S]*?"type"[\s\S]*?\}/);

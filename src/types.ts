@@ -106,6 +106,9 @@ export interface AgentResult<T = unknown> {
 
 // ─── AI provider types ────────────────────────────────────────────────────────
 
+/** Model routing tiers — controls cost vs quality tradeoff */
+export type ModelTier = 'fast' | 'balanced' | 'powerful';
+
 export interface AIMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -116,6 +119,7 @@ export interface AIRequest {
   maxTokens?: number;
   temperature?: number;
   task?: AgentTask;
+  modelTier?: ModelTier;  // default: 'balanced'
 }
 
 export interface AIResponse {

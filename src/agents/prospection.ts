@@ -38,6 +38,7 @@ Pas d'explication, juste le JSON.
       maxTokens:   200,
       temperature: 0.5,
       task: AgentTask.PROSPECTING,
+      modelTier:   'fast',  // Pain point inference = simple classification
     });
 
     const match = response.content.match(/\[.*?\]/s);

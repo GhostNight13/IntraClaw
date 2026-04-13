@@ -228,6 +228,7 @@ Maximum 3 faits. Si rien de significatif, réponds avec facts=[].
       maxTokens:   300,
       temperature: 0.2,
       task: AgentTask.MAINTENANCE,
+      modelTier:   'fast',  // Fact extraction = simple parsing
     });
 
     const match = response.content.match(/\{[\s\S]*"facts"[\s\S]*\}/);
@@ -314,6 +315,7 @@ Réponds UNIQUEMENT avec le contenu du fichier Markdown.
       maxTokens:   1500,
       temperature: 0.2,
       task: AgentTask.MAINTENANCE,
+      modelTier:   'fast',  // Markdown formatting = simple task
     });
 
     // Strip possible markdown fences

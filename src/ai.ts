@@ -23,6 +23,7 @@ function getCacheKey(request: AIRequest): string {
     messages: request.messages,
     maxTokens: request.maxTokens,
     temperature: request.temperature,
+    modelTier: request.modelTier ?? 'balanced',
   });
   return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
 }

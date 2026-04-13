@@ -78,6 +78,7 @@ JSON strict :
     maxTokens:   700,
     temperature: 0.85,
     task: AgentTask.CONTENT,
+    modelTier:   'balanced',  // LinkedIn posts need creative quality
   });
 
   const match = response.content.match(/\{[\s\S]*"hook"[\s\S]*"body"[\s\S]*\}/);

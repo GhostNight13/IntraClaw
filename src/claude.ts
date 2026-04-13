@@ -3,10 +3,21 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { logger } from './utils/logger';
-import type { AIRequest, AIResponse } from './types';
+import type { AIRequest, AIResponse, ModelTier } from './types';
 
 const TIMEOUT_MS   = 120_000; // 2 min
 const MAX_BUFFER   = 1024 * 1024; // 1 MB
+
+/** Maps ModelTier to concrete Claude model identifiers */
+const MODEL_BY_TIER: Record<ModelTier, string> = {
+  fast:      'claude-3-5-haiku-20241022',
+  balanced:  'claude-3-5-sonnet-20241022',
+  powerful:  'claude-3-7-sonnet-20250219',
+};
+
+function resolveModel(tier?: ModelTier): string {
+  return MODEL_BY_TIER[tier ?? 'balanced'];
+}
 
 /**
  * Thrown when the Claude CLI explicitly hits Anthropic's rate limit.
@@ -63,8 +74,9 @@ export async function callClaude(request: AIRequest): Promise<AIResponse> {
   try {
     fs.writeFileSync(tmpFile, fullPrompt, 'utf8');
 
-    const cmd = `claude --print < "${tmpFile}"`;
-    logger.info('Claude', 'Calling Claude Code CLI');
+    const model = resolveModel(request.modelTier);
+    const cmd = `claude --print --model "${model}" < "${tmpFile}"`;
+    logger.info('Claude', `Calling Claude CLI (tier=${request.modelTier ?? 'balanced'}, model=${model})`);
 
     const result = execSync(cmd, {
       timeout: TIMEOUT_MS,

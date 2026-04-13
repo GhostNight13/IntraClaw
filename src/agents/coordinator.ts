@@ -110,6 +110,7 @@ Sois concis, positif, actionnable.
     maxTokens:   500,
     temperature: 0.6,
     task: AgentTask.MORNING_BRIEF,
+    modelTier:   'fast',  // Structured briefing from pre-gathered data
   });
 
   return response.content;
@@ -204,6 +205,7 @@ Réponds en JSON :
       maxTokens:   400,
       temperature: 0.4,
       task: AgentTask.MAINTENANCE,
+      modelTier:   'powerful',  // Strategic analysis needs best reasoning
     });
 
     const match = response.content.match(/\{[\s\S]*"assessment"[\s\S]*\}/);

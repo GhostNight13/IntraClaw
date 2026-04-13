@@ -237,6 +237,7 @@ Limite : max 2 propositions par analyse. Sois conservateur — propose seulement
       maxTokens:   600,
       temperature: 0.2,
       task: AgentTask.MAINTENANCE,
+      modelTier:   'powerful',  // Code analysis needs strong reasoning
     });
 
     const match = response.content.match(/\{[\s\S]*"analysis"[\s\S]*\}/);
@@ -309,6 +310,7 @@ Génère le fichier complet modifié. Réponds UNIQUEMENT avec le code TypeScrip
         maxTokens:   2000,
         temperature: 0.1,
         task: AgentTask.MAINTENANCE,
+        modelTier:   'powerful',  // Code generation needs precision
       });
 
       // Strip possible markdown fences

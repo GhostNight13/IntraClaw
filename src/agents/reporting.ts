@@ -112,6 +112,7 @@ Sois concis, data-driven. Pas de blabla.
     maxTokens:   600,
     temperature: 0.6,
     task: AgentTask.EVENING_REPORT,
+    modelTier:   'fast',  // Stats compilation from pre-gathered data
   });
 
   return response.content;
@@ -149,6 +150,7 @@ Méthode OODA. Sois data-driven.
     maxTokens:   800,
     temperature: 0.5,
     task: AgentTask.MAINTENANCE,
+    modelTier:   'fast',  // Weekly stats compilation
   });
 
   return response.content;
