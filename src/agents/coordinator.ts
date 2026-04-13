@@ -15,6 +15,7 @@ import { runContentAgent } from './content';
 import { runReportingAgent } from './reporting';
 import { analyzeAndPropose } from './self-improvement';
 import { runEnhancedMemory } from '../memory/enhanced';
+import { runStrategyEvolution } from '../evolution/strategy-evolver';
 import { AgentTask, ProspectStatus } from '../types';
 import type { AgentResult } from '../types';
 
@@ -302,6 +303,10 @@ export async function runTask(task: AgentTask): Promise<AgentResult> {
       // Module 4: update heartbeat + integrate learned facts
       await runEnhancedMemory().catch(err =>
         logger.warn('Coordinator', 'Enhanced memory cycle failed (non-fatal)', err instanceof Error ? err.message : err)
+      );
+      // Module 5: weekly Ouroboros strategy evolution — Wonder/Reflect cycle
+      await runStrategyEvolution().catch(err =>
+        logger.warn('Coordinator', 'Strategy evolution failed (non-fatal)', err instanceof Error ? err.message : err)
       );
       return report;
     }
