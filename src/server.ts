@@ -27,6 +27,7 @@ import {
 } from './tools/computer-use';
 import { getLoopState, pauseLoop, resumeLoop } from './loop/autonomous-loop';
 import { getAllGoals, addGoal, updateGoalStatus, getPrioritizedGoals } from './reasoning/goal-manager';
+import { executeUniversalTask } from './executor/universal-executor';
 
 const PORT = parseInt(process.env.API_PORT ?? '3001', 10);
 let schedulerPaused = false;
@@ -321,6 +322,20 @@ app.post('/api/voice', async (req: Request, res: Response) => {
       durationMs: response.durationMs,
       model:      response.model,
     });
+  }
+});
+
+// ─── POST /api/task ──────────────────────────────────────────────────────────
+
+app.post('/api/task', async (req: Request, res: Response) => {
+  const { request } = req.body as { request?: string };
+  if (!request) { res.status(400).json({ error: 'Missing request' }); return; }
+
+  try {
+    const result = await executeUniversalTask(request);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown' });
   }
 });
 

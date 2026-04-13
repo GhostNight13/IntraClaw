@@ -15,6 +15,7 @@ import { ask } from '../ai';
 import { buildSystemPrompt } from '../memory/core';
 import { getLoopState, pauseLoop, resumeLoop } from '../loop/autonomous-loop';
 import { getPrioritizedGoals } from '../reasoning/goal-manager';
+import { executeUniversalTask } from '../executor/universal-executor';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -424,6 +425,37 @@ async function handleText(ctx: Context): Promise<void> {
       const result = await runTask(AgentTask.CONTENT);
       await ctx.reply(result.success ? '✅ Contenu généré et sauvegardé.' : `❌ ${result.error}`);
     } catch (err) { await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`); }
+    return;
+  }
+
+  // ─── Universal Task Executor — complex action requests ──────────────────────
+
+  const actionPatterns = [
+    /^(cr[ée]+|fais|fait|build|g[ée]n[èe]re|envoie|d[ée]ploie|installe|configure|cherche|analyse|recherche|t[ée]l[ée]charge|ouvre|lance|modifie|update|upload|download|scrape)/i,
+    /^(je veux|j'veux|jveux|il faut|il me faut|peux-tu|peux tu|est-ce que tu peux)/i,
+  ];
+
+  const isActionRequest = actionPatterns.some(p => p.test(raw.trim()));
+
+  if (isActionRequest && raw.length > 15) {
+    await ctx.reply('🧠 Je réfléchis et je m\'y mets...');
+
+    try {
+      const result = await executeUniversalTask(raw, (progress) => {
+        if (progress.currentStep % 3 === 0 && progress.currentStep > 0) {
+          ctx.reply(`⚙️ Étape ${progress.currentStep}/${progress.totalSteps}`).catch(() => {});
+        }
+      });
+
+      if (result.status === 'completed') {
+        await ctx.reply(`✅ Tâche terminée !\n\n${(result.finalOutput ?? '').slice(0, 3000)}`);
+      } else {
+        await ctx.reply(`❌ Échoué : ${result.error ?? 'Erreur inconnue'}`);
+      }
+    } catch (err) {
+      logger.error('Telegram', 'Universal task executor failed', err instanceof Error ? err.message : err);
+      await ctx.reply('❌ Erreur dans l\'exécution de la tâche.');
+    }
     return;
   }
 

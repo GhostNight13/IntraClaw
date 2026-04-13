@@ -222,7 +222,8 @@ export type LoopActionType =
   | 'evening_report'
   | 'maintenance'
   | 'wait'          // Pas d'action urgente — attendre prochain cycle
-  | 'notify_user';  // Envoyer message Telegram à Ayman
+  | 'notify_user'   // Envoyer message Telegram à Ayman
+  | 'execute_task'; // Exécuter une tâche arbitraire via Universal Task Executor
 
 export interface LoopAction {
   type: LoopActionType;
@@ -231,6 +232,7 @@ export interface LoopAction {
   estimatedDurationMs: number;
   agentTask?: AgentTask;        // Si mappé à tâche existante
   notificationMessage?: string; // Si type='notify_user'
+  taskRequest?: string;         // Si type='execute_task' : la requête en langage naturel
 }
 
 export interface LoopState {
