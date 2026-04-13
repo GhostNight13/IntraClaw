@@ -1,14 +1,14 @@
 import { logger } from '../utils/logger';
 import { ask } from '../ai';
 import { buildSystemPrompt } from '../memory/core';
-import { scrapeGoogleMaps, getTodayCategory } from '../tools/scraper';
+import { scrapeGoogleMaps, getRandomBelgiumTarget, BelgiumTarget } from '../tools/scraper';
 import { analyzeUrl, formatDiagnosisFr } from '../tools/pagespeed';
 import { verifyEmail } from '../tools/email-verify';
 import { addProspect, findDuplicateProspect } from '../tools/notion';
 import { ProspectStatus, AgentTask } from '../types';
 import type { AgentResult, Prospect } from '../types';
 
-const MAX_PROSPECTS_PER_RUN = 5;
+const MAX_PROSPECTS_PER_RUN = 30;
 
 /**
  * Use AI to infer pain points from scraped business data + PageSpeed analysis.
@@ -77,105 +77,94 @@ function guessEmail(businessName: string, website?: string): string | null {
 
 export async function runProspectionAgent(): Promise<AgentResult<{ prospectsAdded: number }>> {
   const start = Date.now();
-  logger.info('Prospection', '=== Starting prospection agent ===');
+  logger.info('Prospection', '=== Starting Belgium-wide prospection ===');
 
   let prospectsAdded = 0;
 
   try {
-    const category = getTodayCategory();
-    logger.info('Prospection', `Today's category: "${category}"`);
+    // Pick 3 different Belgian targets to maximize coverage
+    const targets: BelgiumTarget[] = [];
+    const used = new Set<string>();
+    while (targets.length < 3) {
+      const t = getRandomBelgiumTarget();
+      if (!used.has(t.query)) { targets.push(t); used.add(t.query); }
+    }
 
-    const businesses = await scrapeGoogleMaps(category, MAX_PROSPECTS_PER_RUN * 2);
-    logger.info('Prospection', `Scraped ${businesses.length} businesses`);
-
-    for (const biz of businesses) {
+    for (const target of targets) {
       if (prospectsAdded >= MAX_PROSPECTS_PER_RUN) break;
+      logger.info('Prospection', `Searching: "${target.query}" (${target.language.toUpperCase()})`);
 
-      // Skip if no usable contact info
-      const guessedEmail = guessEmail(biz.name, biz.website);
-      if (!guessedEmail && !biz.phone) {
-        logger.info('Prospection', `Skipping ${biz.name} — no contact info`);
-        continue;
-      }
+      const businesses = await scrapeGoogleMaps(target.query, 15);
+      logger.info('Prospection', `Scraped ${businesses.length} businesses in ${target.city}`);
 
-      const email = guessedEmail ?? '';
+      for (const biz of businesses) {
+        if (prospectsAdded >= MAX_PROSPECTS_PER_RUN) break;
 
-      // Check for duplicates in Notion
-      if (email) {
-        const isDupe = await findDuplicateProspect(email);
-        if (isDupe) {
-          logger.info('Prospection', `Duplicate prospect skipped: ${email}`);
-          continue;
+        const guessedEmail = guessEmail(biz.name, biz.website);
+        if (!guessedEmail && !biz.phone) continue;
+
+        const email = guessedEmail ?? '';
+        if (email) {
+          const isDupe = await findDuplicateProspect(email);
+          if (isDupe) continue;
         }
-      }
 
-      // Verify email deliverability
-      let emailValid = false;
-      if (email) {
-        const verifyResult = await verifyEmail(email);
-        emailValid = verifyResult.valid;
-        if (!emailValid) {
-          logger.info('Prospection', `Email not deliverable: ${email} (${verifyResult.reason})`);
-          // Still add prospect — we may reach them by phone
+        let emailValid = false;
+        if (email) {
+          const verifyResult = await verifyEmail(email);
+          emailValid = verifyResult.valid;
         }
-      }
 
-      // PageSpeed analysis for prospects with a website
-      let pageSpeedDiagnosis: string | null = null;
-      if (biz.website) {
+        let pageSpeedDiagnosis: string | null = null;
+        if (biz.website) {
+          try {
+            const psResult = await analyzeUrl(biz.website, 'mobile');
+            pageSpeedDiagnosis = formatDiagnosisFr(psResult);
+          } catch { /* skip */ }
+        }
+
+        const painPoints = await inferPainPoints(biz.name, biz.category, pageSpeedDiagnosis);
+
+        const prospect: Omit<Prospect, 'id' | 'createdAt'> = {
+          name:           biz.name,
+          businessName:   biz.name,
+          email,
+          phone:          biz.phone,
+          website:        biz.website,
+          industry:       biz.category || target.query.split(' ')[0],
+          location:       biz.address || target.city,
+          status:         ProspectStatus.NEW,
+          source:         'google_maps',
+          painPoints,
+          notes: [
+            `Région: ${target.region} | Langue: ${target.language.toUpperCase()}`,
+            pageSpeedDiagnosis ? `PageSpeed: ${pageSpeedDiagnosis.split('\n')[0]}` : '',
+            !biz.hasWebsite ? '⚠️ Pas de site web' : '',
+            !emailValid && email ? '⚠️ Email non vérifié' : '',
+          ].filter(Boolean).join(' | '),
+          lastContactedAt: undefined,
+          convertedAt:     undefined,
+        };
+
         try {
-          const psResult = await analyzeUrl(biz.website, 'mobile');
-          pageSpeedDiagnosis = formatDiagnosisFr(psResult);
-          logger.info('Prospection', `PageSpeed for ${biz.name}: ${psResult.performanceScore}/100`);
+          await addProspect(prospect);
+          prospectsAdded++;
+          logger.info('Prospection', `Added: ${biz.name} (${target.city}, ${target.language.toUpperCase()})`);
         } catch (err) {
-          logger.warn('Prospection', `PageSpeed failed for ${biz.website}`, err instanceof Error ? err.message : err);
+          logger.error('Prospection', `Failed: ${biz.name}`, err instanceof Error ? err.message : err);
         }
-      }
-
-      // AI-inferred pain points
-      const painPoints = await inferPainPoints(biz.name, biz.category, pageSpeedDiagnosis);
-
-      // Build prospect object
-      const prospect: Omit<Prospect, 'id' | 'createdAt'> = {
-        name:           biz.name,
-        businessName:   biz.name,
-        email:          email,
-        phone:          biz.phone,
-        website:        biz.website,
-        industry:       biz.category || category.split(' ')[0],
-        location:       biz.address || 'Bruxelles',
-        status:         ProspectStatus.NEW,
-        source:         'google_maps',
-        painPoints,
-        notes:          [
-          pageSpeedDiagnosis ? `PageSpeed: ${pageSpeedDiagnosis.split('\n')[0]}` : '',
-          biz.rating     ? `Note Google: ${biz.rating}/5 (${biz.reviewCount ?? 0} avis)` : '',
-          !biz.hasWebsite ? '⚠️ Pas de site web détecté' : '',
-          !emailValid && email ? '⚠️ Email non vérifié' : '',
-        ].filter(Boolean).join(' | '),
-        lastContactedAt: undefined,
-        convertedAt:     undefined,
-      };
-
-      // Save to Notion CRM
-      try {
-        await addProspect(prospect);
-        prospectsAdded++;
-        logger.info('Prospection', `Added prospect: ${biz.name}`, { email, website: biz.website });
-      } catch (err) {
-        logger.error('Prospection', `Failed to add prospect ${biz.name}`, err instanceof Error ? err.message : err);
       }
     }
 
-    logger.info('Prospection', `=== Prospection done: ${prospectsAdded} prospects added ===`);
+    logger.info('Prospection', `=== Done: ${prospectsAdded} prospects ===`);
 
     return {
-      task:        AgentTask.PROSPECTING,
-      success:     true,
-      data:        { prospectsAdded },
-      durationMs:  Date.now() - start,
-      model:       'claude',
-      timestamp:   new Date().toISOString(),
+      task:       AgentTask.PROSPECTING,
+      success:    true,
+      data:       { prospectsAdded },
+      durationMs: Date.now() - start,
+      model:      'claude',
+      timestamp:  new Date().toISOString(),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

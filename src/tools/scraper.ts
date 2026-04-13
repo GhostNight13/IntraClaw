@@ -73,6 +73,68 @@ export const BRUSSELS_CATEGORIES = [
   'photographe bruxelles',
 ];
 
+export interface BelgiumTarget {
+  query: string;
+  city: string;
+  region: 'brussels' | 'wallonia' | 'flanders';
+  language: 'fr' | 'nl';
+}
+
+export const BELGIUM_TARGETS: BelgiumTarget[] = [
+  // Brussels (French)
+  { query: 'restaurant bruxelles', city: 'Bruxelles', region: 'brussels', language: 'fr' },
+  { query: 'coiffeur bruxelles', city: 'Bruxelles', region: 'brussels', language: 'fr' },
+  { query: 'boulangerie bruxelles', city: 'Bruxelles', region: 'brussels', language: 'fr' },
+  { query: 'plombier bruxelles', city: 'Bruxelles', region: 'brussels', language: 'fr' },
+  { query: 'électricien bruxelles', city: 'Bruxelles', region: 'brussels', language: 'fr' },
+  { query: 'garage voiture bruxelles', city: 'Bruxelles', region: 'brussels', language: 'fr' },
+  { query: 'photographe bruxelles', city: 'Bruxelles', region: 'brussels', language: 'fr' },
+  { query: 'fleuriste bruxelles', city: 'Bruxelles', region: 'brussels', language: 'fr' },
+  { query: 'traiteur bruxelles', city: 'Bruxelles', region: 'brussels', language: 'fr' },
+  { query: 'architecte bruxelles', city: 'Bruxelles', region: 'brussels', language: 'fr' },
+  // Liège (French)
+  { query: 'restaurant liège', city: 'Liège', region: 'wallonia', language: 'fr' },
+  { query: 'coiffeur liège', city: 'Liège', region: 'wallonia', language: 'fr' },
+  { query: 'plombier liège', city: 'Liège', region: 'wallonia', language: 'fr' },
+  { query: 'boulangerie liège', city: 'Liège', region: 'wallonia', language: 'fr' },
+  { query: 'photographe liège', city: 'Liège', region: 'wallonia', language: 'fr' },
+  // Charleroi (French)
+  { query: 'restaurant charleroi', city: 'Charleroi', region: 'wallonia', language: 'fr' },
+  { query: 'coiffeur charleroi', city: 'Charleroi', region: 'wallonia', language: 'fr' },
+  { query: 'électricien charleroi', city: 'Charleroi', region: 'wallonia', language: 'fr' },
+  { query: 'boulangerie charleroi', city: 'Charleroi', region: 'wallonia', language: 'fr' },
+  // Namur (French)
+  { query: 'restaurant namur', city: 'Namur', region: 'wallonia', language: 'fr' },
+  { query: 'coiffeur namur', city: 'Namur', region: 'wallonia', language: 'fr' },
+  { query: 'plombier namur', city: 'Namur', region: 'wallonia', language: 'fr' },
+  // Antwerp (Dutch)
+  { query: 'restaurant antwerpen', city: 'Antwerpen', region: 'flanders', language: 'nl' },
+  { query: 'kapper antwerpen', city: 'Antwerpen', region: 'flanders', language: 'nl' },
+  { query: 'loodgieter antwerpen', city: 'Antwerpen', region: 'flanders', language: 'nl' },
+  { query: 'bakkerij antwerpen', city: 'Antwerpen', region: 'flanders', language: 'nl' },
+  { query: 'fotograaf antwerpen', city: 'Antwerpen', region: 'flanders', language: 'nl' },
+  { query: 'elektricien antwerpen', city: 'Antwerpen', region: 'flanders', language: 'nl' },
+  // Ghent (Dutch)
+  { query: 'restaurant gent', city: 'Gent', region: 'flanders', language: 'nl' },
+  { query: 'kapper gent', city: 'Gent', region: 'flanders', language: 'nl' },
+  { query: 'loodgieter gent', city: 'Gent', region: 'flanders', language: 'nl' },
+  { query: 'bakkerij gent', city: 'Gent', region: 'flanders', language: 'nl' },
+  // Bruges (Dutch)
+  { query: 'restaurant brugge', city: 'Brugge', region: 'flanders', language: 'nl' },
+  { query: 'kapper brugge', city: 'Brugge', region: 'flanders', language: 'nl' },
+  { query: 'elektricien brugge', city: 'Brugge', region: 'flanders', language: 'nl' },
+  // Leuven (Dutch)
+  { query: 'restaurant leuven', city: 'Leuven', region: 'flanders', language: 'nl' },
+  { query: 'kapper leuven', city: 'Leuven', region: 'flanders', language: 'nl' },
+  // Mons (French)
+  { query: 'restaurant mons', city: 'Mons', region: 'wallonia', language: 'fr' },
+  { query: 'coiffeur mons', city: 'Mons', region: 'wallonia', language: 'fr' },
+];
+
+export function getRandomBelgiumTarget(): BelgiumTarget {
+  return BELGIUM_TARGETS[Math.floor(Math.random() * BELGIUM_TARGETS.length)];
+}
+
 const USER_AGENTS = [
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -253,5 +315,5 @@ export function getTodayCategory(): string {
   const dayOfYear = Math.floor(
     (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86_400_000
   );
-  return BRUSSELS_CATEGORIES[dayOfYear % BRUSSELS_CATEGORIES.length];
+  return BELGIUM_TARGETS[dayOfYear % BELGIUM_TARGETS.length].query;
 }

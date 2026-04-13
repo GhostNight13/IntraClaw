@@ -8,8 +8,16 @@ import type { AgentResult, Prospect, ColdEmail } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const MAX_EMAILS_PER_RUN = 5;
+const MAX_EMAILS_PER_RUN = 20;
 const EMAIL_LOG_PATH = path.resolve(process.cwd(), 'data', 'emails-sent.json');
+
+// ─── Telegram notifier (set by telegram.ts to avoid circular import) ──────────
+
+let _telegramNotify: ((msg: string) => Promise<void>) | null = null;
+
+export function setColdEmailNotifier(fn: (msg: string) => Promise<void>): void {
+  _telegramNotify = fn;
+}
 
 // ─── Email log (lightweight persistence) ─────────────────────────────────────
 
@@ -51,67 +59,100 @@ function alreadyEmailed(email: string): boolean {
 // ─── Email generation ─────────────────────────────────────────────────────────
 
 async function generateColdEmail(prospect: Prospect): Promise<Pick<ColdEmail, 'subject' | 'body'>> {
-  const tone = prospect.industry.toLowerCase().includes('restaurant') ||
-               prospect.industry.toLowerCase().includes('coiffeur') ||
-               prospect.industry.toLowerCase().includes('boulangerie')
-    ? 'direct et chaleureux'
-    : 'professionnel et respectueux';
-
-  const painPoint = prospect.painPoints[0] ?? 'une présence digitale insuffisante';
+  // Detect language from notes field
+  const isNL = prospect.notes?.includes('Langue: NL') ?? false;
   const hasWebsite = !!prospect.website;
 
-  const prompt = `
-Tu es IntraClaw. Rédige un cold email COMPLET pour ce prospect.
+  const styleGuide = isNL ? `
+STIJL (Nederlands — Vlaanderen):
+- Begin NOOIT met "Ik ben" of "Ik heet"
+- Begin met een specifieke observatie over hun zaak
+- Gebruik → voor opsommingen (niet •)
+- Max 120 woorden
+- Toon: vriendelijk maar professioneel, niet aanmatigend
+- CTA: "Mag ik u een gratis mockup sturen?" of "Heeft u 10 minuten deze week?"
+- Handtekening: Ayman Idamre\nWebdesign professional\nintra-site.com · intra.web.site1@gmail.com
+- GDPR: "Wenst u geen berichten meer? Antwoord STOP."
 
-MÉTHODE OBLIGATOIRE — 4-D (Lyra) :
-1. Douleur — commence par le problème du prospect (1 phrase)
-2. Désir — la solution idéale (1 phrase)
-3. Décision — pourquoi Ayman (1 phrase + portfolio)
-4. Deal — offre concrète, sans risque (1 phrase)
+VOORBEELD AYMAN'S STIJL:
+Onderwerp: Uw website — een snelle observatie
+
+Goedendag,
+
+Ik bekeek ${hasWebsite ? `uw site ${prospect.website}` : `uw aanwezigheid op Google`} en merkte een paar punten op:
+
+→ [Specifiek probleem 1 dat ik zag]
+→ [Specifiek probleem 2]
+
+Voor een zaak zoals [naam] in [stad] kan een professionele website echt het verschil maken.
+
+Bekijk een voorbeeld van mijn werk: intra-site.com
+
+Gratis mockup beschikbaar, zonder engagement.
+
+Ayman Idamre
+intra-site.com · intra.web.site1@gmail.com` : `
+STYLE (Français — Bruxelles/Wallonie) :
+- Ne JAMAIS commencer par "Je m'appelle" ou "Je suis développeur"
+- Commencer par "J'ai visité votre site X" ou "En cherchant X sur Google, j'ai remarqué..."
+- Utiliser → pour les points (pas de •)
+- Max 130 mots
+- Ton : direct, bienveillant, jamais condescendant
+- Observer 1 chose SPÉCIFIQUE sur leur présence (pas générique)
+- CTA : "Appel de 10 minutes cette semaine ?" ou "Répondez simplement si intéressé"
+- Signature : Ayman Idamre\nCréation de sites web professionnels\nintra-site.com · intra.web.site1@gmail.com
+- RGPD : "Si vous ne souhaitez plus recevoir nos messages, répondez STOP."
+
+EXEMPLES RÉELS D'AYMAN (reproduire ce style) :
+Ex 1 — Site existant médiocre :
+"J'ai visité votre site magicvelos.be en cherchant des magasins de vélos à Bruxelles — et j'ai tout de suite vu que vous perdez des clients potentiels.
+→ Les images sont trop compressées : impression basse qualité
+→ Trop de texte : le regard ne sait pas où se poser
+→ Design manque d'épuration : donne l'impression que le commerce est dépassé
+Jetez un œil à ce type de résultat : intra-site.com
+Un appel de 10 minutes cette semaine ?"
+
+Ex 2 — Pas de site :
+"J'ai découvert Elle M Boutique et remarqué que votre présence en ligne pourrait être renforcée.
+70% des visites viennent du téléphone — vos clientes potentielles vous cherchent avant de passer en magasin.
+Je crée des sites professionnels livrés en 5-7 jours : design adapté à votre univers, mobile, référencé Google.
+Maquette gratuite de ce que ça donnerait pour [Nom]. Intéressé(e) ?"`;
+
+  const prompt = `Tu es IntraClaw. Génère un cold email pour Ayman Idamre (agence intra-site.com).
 
 PROSPECT :
 - Nom : ${prospect.businessName}
 - Secteur : ${prospect.industry}
-- Localisation : ${prospect.location}
-- Douleur principale : ${painPoint}
-- Site actuel : ${hasWebsite ? prospect.website : 'Aucun site détecté'}
-- Ton requis : ${tone}
+- Ville : ${prospect.location}
+- Site actuel : ${hasWebsite ? prospect.website : 'AUCUN SITE DÉTECTÉ'}
+- Douleur principale : ${prospect.painPoints[0] ?? 'présence en ligne insuffisante'}
+- Notes : ${prospect.notes ?? ''}
 
-CONTRAINTES :
-- Maximum 150 mots (corps uniquement, pas la signature)
-- Commencer par le PROBLÈME, jamais par "Je m'appelle"
-- Inclure : intra-site.com et l'offre maquette gratuite
-- Ne PAS mentionner que c'est un email automatisé
-- Langue : français
+${styleGuide}
 
-SORTIE OBLIGATOIRE (format JSON strict) :
-{
-  "subject": "Objet de l'email (max 60 caractères)",
-  "body": "Corps HTML de l'email (paragraphes avec <p>)"
-}
-`.trim();
+RÈGLES ABSOLUES :
+- 1 observation SPÉCIFIQUE sur leur situation réelle (site visité, pas de site détecté, etc.)
+- Lien portfolio : intra-site.com (JAMAIS haiskills.vercel.app)
+- Offre : maquette gratuite, sans engagement
+- Format JSON strict
+
+{"subject": "Objet max 60 chars", "body": "Corps HTML avec <p> et <br>"}`.trim();
 
   const response = await ask({
     messages: [
       { role: 'system', content: buildSystemPrompt() },
       { role: 'user',   content: prompt },
     ],
-    maxTokens:   600,
-    temperature: 0.8,
+    maxTokens:   500,
+    temperature: 0.75,
     task: AgentTask.COLD_EMAIL,
   });
 
-  // Extract JSON from response
   const match = response.content.match(/\{[\s\S]*"subject"[\s\S]*"body"[\s\S]*\}/);
-  if (!match) {
-    throw new Error(`AI response not valid JSON:\n${response.content.slice(0, 200)}`);
-  }
+  if (!match) throw new Error(`AI response not valid JSON:\n${response.content.slice(0, 200)}`);
 
   const parsed = JSON.parse(match[0]) as { subject: string; body: string };
-  return {
-    subject: parsed.subject.slice(0, 60),
-    body:    parsed.body,
-  };
+  return { subject: parsed.subject.slice(0, 60), body: parsed.body };
 }
 
 // ─── Follow-up generation ─────────────────────────────────────────────────────
@@ -233,6 +274,21 @@ export async function runColdEmailAgent(): Promise<AgentResult<{ emailsSent: num
     }
 
     logger.info('ColdEmail', `=== Done: ${emailsSent} cold emails + ${followUpsSent} follow-ups ===`);
+
+    // Send Telegram report
+    const report = [
+      `📊 *Rapport Cold Email — ${new Date().toLocaleString('fr-BE')}*`,
+      ``,
+      `📧 Cold emails envoyés : *${emailsSent}*`,
+      `🔄 Relances envoyées : *${followUpsSent}*`,
+      `📬 Total aujourd'hui : *${getEmailsSentToday()}*`,
+      ``,
+      `✅ Mission terminée.`,
+    ].join('\n');
+
+    try {
+      await _telegramNotify?.(report);
+    } catch { /* non-blocking */ }
 
     return {
       task:       AgentTask.COLD_EMAIL,

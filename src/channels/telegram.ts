@@ -3,7 +3,9 @@ import { logger } from '../utils/logger';
 import { rateLimiter } from '../utils/rate-limiter';
 import { costTracker } from '../utils/cost-tracker';
 import { getProspectsByStatus } from '../tools/notion';
-import { getEmailsSentToday } from '../agents/cold-email';
+import { getEmailsSentToday, setColdEmailNotifier } from '../agents/cold-email';
+import { runColdEmailAgent } from '../agents/cold-email';
+import { runProspectionAgent } from '../agents/prospection';
 import { runTask } from '../agents/coordinator';
 import { resolveBlockedTask, getPendingBlockedTasks } from '../agents/autonomous-runner';
 import { getPendingProposals, approveProposal, rejectProposal, applyProposal } from '../agents/self-improvement';
@@ -285,27 +287,102 @@ async function handleReject(ctx: Context): Promise<void> {
 }
 
 async function handleText(ctx: Context): Promise<void> {
-  const text = ctx.message?.text ?? '';
+  const text = (ctx.message?.text ?? '').toLowerCase().trim();
   if (!text || text.startsWith('/')) return;
 
-  logger.info('Telegram', `Message from user: "${text.slice(0, 80)}"`);
-  await ctx.reply('⏳ IntraClaw réfléchit...');
+  logger.info('Telegram', `Message: "${text.slice(0, 80)}"`);
 
-  try {
-    // Route free-text to coordinator as morning brief (ad-hoc)
-    // A dedicated NL router could be added later
-    const result = await runTask(AgentTask.MORNING_BRIEF);
-    if (result.success && result.data && typeof result.data === 'object' && 'brief' in result.data) {
-      const brief = (result.data as { brief: string }).brief;
-      // Telegram message limit: 4096 chars
-      const truncated = brief.slice(0, 4000);
-      await ctx.reply(truncated);
-    } else {
-      await ctx.reply('✅ Tâche executée. Check les logs pour le détail.');
+  // Intent routing — act immediately, no chatting
+  const isProspect = /prospect|cherche|trouve|business|site web|leads?|research/i.test(text);
+  const isEmail    = /email|mail|cold|envoie|envoi|send|contact/i.test(text);
+  const isContent  = /post|linkedin|contenu|content|publi/i.test(text);
+  const isReport   = /rapport|bilan|report|résumé|stats/i.test(text);
+
+  if (isProspect && isEmail) {
+    // Both — run prospection then email
+    await ctx.reply('🔍 Recherche de prospects + envoi emails en cours...\n⏳ Cela peut prendre 5-10 minutes.');
+    try {
+      const p = await runProspectionAgent();
+      await ctx.reply(`✅ Prospection: ${(p.data as { prospectsAdded: number })?.prospectsAdded ?? 0} prospects ajoutés au CRM.`);
+      const e = await runColdEmailAgent();
+      const ed = e.data as { emailsSent: number; followUpsSent: number } | undefined;
+      await ctx.reply(`📧 Emails: ${ed?.emailsSent ?? 0} cold emails + ${ed?.followUpsSent ?? 0} relances envoyés.`);
+    } catch (err) {
+      await ctx.reply(`❌ Erreur: ${err instanceof Error ? err.message : String(err)}`);
     }
-  } catch (err) {
-    await ctx.reply(`❌ Erreur: ${err instanceof Error ? err.message : String(err)}`);
+    return;
   }
+
+  if (isProspect) {
+    await ctx.reply('🔍 Recherche de prospects en cours...\n⏳ Cela peut prendre 3-5 minutes.');
+    try {
+      const result = await runProspectionAgent();
+      const d = result.data as { prospectsAdded: number } | undefined;
+      await ctx.reply(
+        result.success
+          ? `✅ Prospection terminée: *${d?.prospectsAdded ?? 0} nouveaux prospects* ajoutés au CRM Notion.`
+          : `❌ Erreur prospection: ${result.error}`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (err) {
+      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return;
+  }
+
+  if (isEmail) {
+    await ctx.reply('📧 Envoi des cold emails en cours...\n⏳ Cela peut prendre 3-5 minutes.');
+    try {
+      const result = await runColdEmailAgent();
+      const d = result.data as { emailsSent: number; followUpsSent: number } | undefined;
+      await ctx.reply(
+        result.success
+          ? `✅ Emails envoyés: *${d?.emailsSent ?? 0} cold emails* + *${d?.followUpsSent ?? 0} relances*`
+          : `❌ Erreur emails: ${result.error}`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (err) {
+      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return;
+  }
+
+  if (isReport) {
+    await ctx.reply('📋 Génération du rapport...');
+    try {
+      const result = await runTask(AgentTask.EVENING_REPORT);
+      if (result.success && result.data && typeof result.data === 'object' && 'brief' in result.data) {
+        await ctx.reply((result.data as { brief: string }).brief.slice(0, 4000));
+      } else {
+        await ctx.reply('✅ Rapport généré. Check les logs.');
+      }
+    } catch (err) {
+      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return;
+  }
+
+  if (isContent) {
+    await ctx.reply('✍️ Génération de contenu en cours...');
+    try {
+      const result = await runTask(AgentTask.CONTENT);
+      await ctx.reply(result.success ? '✅ Contenu généré et sauvegardé.' : `❌ ${result.error}`);
+    } catch (err) {
+      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return;
+  }
+
+  // Unknown intent — reply with available commands
+  await ctx.reply(
+    '🤖 *IntraClaw* — Dis-moi quoi faire :\n\n' +
+    '• "cherche des prospects" → prospection Google Maps\n' +
+    '• "envoie des cold emails" → envoi emails\n' +
+    '• "cherche et envoie" → prospection + emails\n' +
+    '• "génère un rapport" → bilan du jour\n\n' +
+    'Ou utilise les commandes /status /prospects /blocked',
+    { parse_mode: 'Markdown' }
+  );
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -357,6 +434,25 @@ export function initTelegram(): void {
   bot.command('approve',   async ctx => { if (await guardUser(ctx)) await handleApprove(ctx); });
   bot.command('reject',    async ctx => { if (await guardUser(ctx)) await handleReject(ctx); });
 
+  bot.command('prospect', async ctx => {
+    if (!await guardUser(ctx)) return;
+    await ctx.reply('🔍 Prospection lancée...');
+    try {
+      const result = await runProspectionAgent();
+      const d = result.data as { prospectsAdded: number } | undefined;
+      await ctx.reply(`✅ ${d?.prospectsAdded ?? 0} prospects ajoutés.`);
+    } catch (err) { await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`); }
+  });
+  bot.command('email', async ctx => {
+    if (!await guardUser(ctx)) return;
+    await ctx.reply('📧 Envoi emails lancé...');
+    try {
+      const result = await runColdEmailAgent();
+      const d = result.data as { emailsSent: number; followUpsSent: number } | undefined;
+      await ctx.reply(`✅ ${d?.emailsSent ?? 0} cold emails + ${d?.followUpsSent ?? 0} relances.`);
+    } catch (err) { await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`); }
+  });
+
   // Free text → coordinator
   bot.on('message:text', async ctx => {
     if (!await guardUser(ctx)) return;
@@ -374,6 +470,9 @@ export function initTelegram(): void {
   }).catch(err => {
     logger.error('Telegram', 'Bot start failed', err instanceof Error ? err.message : err);
   });
+
+  // Wire cold-email notifier (avoids circular import)
+  setColdEmailNotifier(sendTelegramMessage);
 
   logger.info('Telegram', `Bot initialized — authorized user: ${ALLOWED_USER}`);
 }
