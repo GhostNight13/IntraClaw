@@ -11,6 +11,10 @@ import { resolveBlockedTask, getPendingBlockedTasks } from '../agents/autonomous
 import { getPendingProposals, approveProposal, rejectProposal, applyProposal } from '../agents/self-improvement';
 import { stopScheduler, startScheduler, getJobs } from '../scheduler';
 import { ProspectStatus, AgentTask } from '../types';
+import { ask } from '../ai';
+import { buildSystemPrompt } from '../memory/core';
+import { getLoopState, pauseLoop, resumeLoop } from '../loop/autonomous-loop';
+import { getPrioritizedGoals } from '../reasoning/goal-manager';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -287,67 +291,120 @@ async function handleReject(ctx: Context): Promise<void> {
 }
 
 async function handleText(ctx: Context): Promise<void> {
-  const text = (ctx.message?.text ?? '').toLowerCase().trim();
-  if (!text || text.startsWith('/')) return;
+  const raw = (ctx.message?.text ?? '').trim();
+  if (!raw || raw.startsWith('/')) return;
 
-  logger.info('Telegram', `Message: "${text.slice(0, 80)}"`);
+  const lower = raw.toLowerCase();
+  logger.info('Telegram', `Chat: "${raw.slice(0, 100)}"`);
 
-  // Intent routing — act immediately, no chatting
-  const isProspect = /prospect|cherche|trouve|business|site web|leads?|research/i.test(text);
-  const isEmail    = /email|mail|cold|envoie|envoi|send|contact/i.test(text);
-  const isContent  = /post|linkedin|contenu|content|publi/i.test(text);
-  const isReport   = /rapport|bilan|report|résumé|stats/i.test(text);
+  // ─── Quick intent detection (no AI call needed) ─────────────────────────────
+
+  // Pause / stop loop
+  if (/\b(pause|arrête|stop|arrêter|stoppe)\b/i.test(lower) && !/prospect|email|mail/i.test(lower)) {
+    const state = getLoopState();
+    if (!state.running) {
+      await ctx.reply('⚠️ La boucle autonome n\'est pas active.');
+      return;
+    }
+    if (state.paused) {
+      await ctx.reply('⚠️ Déjà en pause.');
+      return;
+    }
+    pauseLoop('Demandé par Ayman via Telegram');
+    stopScheduler();
+    schedulerPaused = true;
+    await ctx.reply('⏸ Boucle autonome + scheduler en pause.\nDis "reprends" pour relancer.');
+    return;
+  }
+
+  // Resume loop
+  if (/\b(reprend|resume|relance|restart|redémarre)\b/i.test(lower)) {
+    const state = getLoopState();
+    if (state.running && !state.paused && !schedulerPaused) {
+      await ctx.reply('⚠️ Tout est déjà actif !');
+      return;
+    }
+    if (state.paused) resumeLoop();
+    if (schedulerPaused) { startScheduler(); schedulerPaused = false; }
+    await ctx.reply('▶️ Boucle autonome + scheduler relancés !');
+    return;
+  }
+
+  // Quick status (natural language)
+  if (/\b(status|état|comment (ça|ca) va|how.*going|ça roule)\b/i.test(lower) && !/prospect/i.test(lower)) {
+    const state = getLoopState();
+    const goals = getPrioritizedGoals().slice(0, 3);
+    const lines = [
+      `🤖 *IntraClaw* ${state.running ? (state.paused ? '⏸ Pausé' : '🟢 Actif') : '🔴 Arrêté'}`,
+      `📊 Itération #${state.iteration}`,
+      `⚡ ${state.totalActionsToday} actions aujourd'hui`,
+      state.consecutiveFailures > 0 ? `⚠️ ${state.consecutiveFailures} échecs consécutifs` : '✅ Aucun échec',
+      `🕐 Dernière action : ${state.lastActionType ?? 'aucune'}`,
+    ];
+    if (goals.length > 0) {
+      lines.push('', '🎯 *Objectifs actifs :*');
+      for (const g of goals) lines.push(`  • [${g.priority}] ${g.title}`);
+    }
+    await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
+    return;
+  }
+
+  // ─── Action intent routing (triggers agent tasks) ───────────────────────────
+
+  const isProspect = /prospect|cherche|trouve|business|site web|leads?|research/i.test(lower);
+  const isEmail    = /email|mail|cold|envoie|envoi|send|contact/i.test(lower);
+  const isContent  = /post|linkedin|contenu|content|publi/i.test(lower);
+  const isReport   = /rapport|bilan|report|résumé|stats/i.test(lower);
 
   if (isProspect && isEmail) {
-    // Both — run prospection then email
-    await ctx.reply('🔍 Recherche de prospects + envoi emails en cours...\n⏳ Cela peut prendre 5-10 minutes.');
+    await ctx.replyWithChatAction('typing');
+    await ctx.reply('🔍 Recherche de prospects + envoi emails en cours...\n⏳ 5-10 minutes.');
     try {
       const p = await runProspectionAgent();
-      await ctx.reply(`✅ Prospection: ${(p.data as { prospectsAdded: number })?.prospectsAdded ?? 0} prospects ajoutés au CRM.`);
+      await ctx.reply(`✅ Prospection: ${(p.data as { prospectsAdded: number })?.prospectsAdded ?? 0} prospects ajoutés.`);
       const e = await runColdEmailAgent();
       const ed = e.data as { emailsSent: number; followUpsSent: number } | undefined;
-      await ctx.reply(`📧 Emails: ${ed?.emailsSent ?? 0} cold emails + ${ed?.followUpsSent ?? 0} relances envoyés.`);
+      await ctx.reply(`📧 Emails: ${ed?.emailsSent ?? 0} cold + ${ed?.followUpsSent ?? 0} relances.`);
     } catch (err) {
-      await ctx.reply(`❌ Erreur: ${err instanceof Error ? err.message : String(err)}`);
+      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
     }
     return;
   }
 
   if (isProspect) {
-    await ctx.reply('🔍 Recherche de prospects en cours...\n⏳ Cela peut prendre 3-5 minutes.');
+    await ctx.replyWithChatAction('typing');
+    await ctx.reply('🔍 Prospection en cours... ⏳ 3-5 min.');
     try {
       const result = await runProspectionAgent();
       const d = result.data as { prospectsAdded: number } | undefined;
       await ctx.reply(
         result.success
-          ? `✅ Prospection terminée: *${d?.prospectsAdded ?? 0} nouveaux prospects* ajoutés au CRM Notion.`
-          : `❌ Erreur prospection: ${result.error}`,
+          ? `✅ *${d?.prospectsAdded ?? 0} nouveaux prospects* ajoutés au CRM.`
+          : `❌ Erreur: ${result.error}`,
         { parse_mode: 'Markdown' }
       );
-    } catch (err) {
-      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
-    }
+    } catch (err) { await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`); }
     return;
   }
 
   if (isEmail) {
-    await ctx.reply('📧 Envoi des cold emails en cours...\n⏳ Cela peut prendre 3-5 minutes.');
+    await ctx.replyWithChatAction('typing');
+    await ctx.reply('📧 Envoi cold emails... ⏳ 3-5 min.');
     try {
       const result = await runColdEmailAgent();
       const d = result.data as { emailsSent: number; followUpsSent: number } | undefined;
       await ctx.reply(
         result.success
-          ? `✅ Emails envoyés: *${d?.emailsSent ?? 0} cold emails* + *${d?.followUpsSent ?? 0} relances*`
-          : `❌ Erreur emails: ${result.error}`,
+          ? `✅ *${d?.emailsSent ?? 0} cold emails* + *${d?.followUpsSent ?? 0} relances*`
+          : `❌ Erreur: ${result.error}`,
         { parse_mode: 'Markdown' }
       );
-    } catch (err) {
-      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
-    }
+    } catch (err) { await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`); }
     return;
   }
 
   if (isReport) {
+    await ctx.replyWithChatAction('typing');
     await ctx.reply('📋 Génération du rapport...');
     try {
       const result = await runTask(AgentTask.EVENING_REPORT);
@@ -356,33 +413,73 @@ async function handleText(ctx: Context): Promise<void> {
       } else {
         await ctx.reply('✅ Rapport généré. Check les logs.');
       }
-    } catch (err) {
-      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
-    }
+    } catch (err) { await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`); }
     return;
   }
 
   if (isContent) {
-    await ctx.reply('✍️ Génération de contenu en cours...');
+    await ctx.replyWithChatAction('typing');
+    await ctx.reply('✍️ Génération contenu...');
     try {
       const result = await runTask(AgentTask.CONTENT);
       await ctx.reply(result.success ? '✅ Contenu généré et sauvegardé.' : `❌ ${result.error}`);
-    } catch (err) {
-      await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`);
-    }
+    } catch (err) { await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`); }
     return;
   }
 
-  // Unknown intent — reply with available commands
-  await ctx.reply(
-    '🤖 *IntraClaw* — Dis-moi quoi faire :\n\n' +
-    '• "cherche des prospects" → prospection Google Maps\n' +
-    '• "envoie des cold emails" → envoi emails\n' +
-    '• "cherche et envoie" → prospection + emails\n' +
-    '• "génère un rapport" → bilan du jour\n\n' +
-    'Ou utilise les commandes /status /prospects /blocked',
-    { parse_mode: 'Markdown' }
-  );
+  // ─── Conversational AI fallback — Claude responds naturally ─────────────────
+
+  await ctx.replyWithChatAction('typing');
+
+  try {
+    const response = await handleNaturalChat(raw);
+    await ctx.reply(response, { parse_mode: 'Markdown' });
+  } catch (err) {
+    logger.error('Telegram', 'Chat AI response failed', err instanceof Error ? err.message : err);
+    await ctx.reply('❌ Erreur dans le traitement de ton message.');
+  }
+}
+
+// ─── Natural chat — Claude conversational AI ────────────────────────────────
+
+async function handleNaturalChat(message: string): Promise<string> {
+  const loopState = getLoopState();
+  const goals = getPrioritizedGoals();
+
+  const context = `ÉTAT ACTUEL D'INTRACLAW :
+- Boucle : ${loopState.running ? (loopState.paused ? 'pausée' : 'active') : 'arrêtée'}
+- Itération : #${loopState.iteration}
+- Dernière action : ${loopState.lastActionType ?? 'aucune'}
+- Actions aujourd'hui : ${loopState.totalActionsToday}
+- Échecs consécutifs : ${loopState.consecutiveFailures}
+- Scheduler : ${schedulerPaused ? 'en pause' : 'actif'}
+
+OBJECTIFS ACTIFS :
+${goals.length > 0 ? goals.slice(0, 5).map(g => `- [${g.priority}] ${g.title}`).join('\n') : '- Aucun objectif défini'}
+
+COMMANDES DISPONIBLES (que l'utilisateur peut utiliser) :
+- "pause" / "stop" → met en pause la boucle
+- "reprends" / "resume" → relance la boucle
+- "status" → voir l'état
+- "cherche des prospects" → prospection
+- "envoie des emails" → cold emails
+- "génère un rapport" → rapport du jour`;
+
+  const response = await ask({
+    messages: [
+      { role: 'system', content: buildSystemPrompt() },
+      {
+        role: 'user',
+        content: `${context}\n\nAyman te dit via Telegram :\n"${message}"\n\nRéponds de manière concise, utile et amicale en français. Tu es IntraClaw, l'agent IA personnel d'Ayman. Si Ayman demande une action (pause, reprise, trigger une tâche), explique-lui la commande à taper. Si c'est une question générale, réponds intelligemment. Maximum 400 caractères.`,
+      },
+    ],
+    maxTokens: 300,
+    temperature: 0.6,
+    task: AgentTask.MORNING_BRIEF,
+    modelTier: 'fast',
+  });
+
+  return response.content;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
