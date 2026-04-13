@@ -157,3 +157,87 @@ export interface ScheduledJob {
   nextRunAt?: string;
   enabled: boolean;
 }
+
+// ─── Autonomous Loop Types ────────────────────────────────────────────────────
+
+export interface PerceptionContext {
+  timestamp: string;            // ISO8601
+  timeOfDay: 'morning' | 'afternoon' | 'evening' | 'night';
+  isBusinessDay: boolean;       // Lun-Ven, pas férié belge
+  hour: number;                 // 0-23 Brussels time
+  dayOfWeek: number;            // 0=Sunday, 6=Saturday
+
+  // Système
+  cpuUsage: number;             // % 0-100
+  batteryLevel: number;         // % 0-100 (-1 si branché secteur)
+  activeApp: string;            // "Google Chrome", "Code", etc.
+  isUserActive: boolean;        // Mouse/keyboard < 5 min
+
+  // Emails
+  unreadEmailCount: number;
+  prospectRepliesCount: number; // Emails de prospects contactés
+
+  // Business
+  prospectsNew: number;         // Status=NEW dans Notion
+  prospectsContacted: number;
+  prospectsReplied: number;
+  emailsSentToday: number;
+  lastProspectionAt: string | null;  // ISO8601
+
+  // Agent state
+  lastActionAt: string | null;  // ISO8601
+  lastActionType: string | null;
+  consecutiveFailures: number;
+  loopIteration: number;
+}
+
+export type GoalPriority = 'critical' | 'high' | 'medium' | 'low';
+export type GoalStatus = 'active' | 'paused' | 'completed' | 'failed';
+export type GoalTimeframe = 'now' | 'today' | 'this_week' | 'ongoing';
+
+export interface Goal {
+  id: string;                   // uuid
+  title: string;
+  description: string;
+  priority: GoalPriority;
+  status: GoalStatus;
+  timeframe: GoalTimeframe;
+  successCriteria: string;      // "3 nouveaux prospects convertis"
+  relatedTask?: AgentTask;      // Lien vers tâche existante si applicable
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
+export type LoopActionType =
+  | 'prospecting'
+  | 'cold_email'
+  | 'content'
+  | 'reply_check'
+  | 'morning_brief'
+  | 'evening_report'
+  | 'maintenance'
+  | 'wait'          // Pas d'action urgente — attendre prochain cycle
+  | 'notify_user';  // Envoyer message Telegram à Ayman
+
+export interface LoopAction {
+  type: LoopActionType;
+  reason: string;               // Pourquoi cette action maintenant ?
+  urgency: number;              // 1-10
+  estimatedDurationMs: number;
+  agentTask?: AgentTask;        // Si mappé à tâche existante
+  notificationMessage?: string; // Si type='notify_user'
+}
+
+export interface LoopState {
+  running: boolean;
+  iteration: number;
+  startedAt: string;
+  lastPerceptionAt: string | null;
+  lastActionAt: string | null;
+  lastActionType: LoopActionType | null;
+  consecutiveFailures: number;
+  totalActionsToday: number;
+  paused: boolean;
+  pauseReason?: string;
+}
