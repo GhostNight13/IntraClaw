@@ -1,77 +1,41 @@
 import * as path from 'path';
 import * as dotenv from 'dotenv';
 
-// Load .env before anything else
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 import { logger } from './utils/logger';
-import { loadMemory, buildSystemPrompt } from './memory/core';
-import { startScheduler, registerTaskHandler } from './scheduler';
-import { addMessage } from './memory/buffer';
+import { loadMemory } from './memory/core';
 import { rateLimiter } from './utils/rate-limiter';
 import { costTracker } from './utils/cost-tracker';
-import { AgentTask } from './types';
-import { runTask } from './agents/coordinator';
-import { runAutonomous } from './agents/autonomous-runner';
-import { initTelegram, sendTelegramMessage } from './channels/telegram';
+import { initTelegram } from './channels/telegram';
 import { startServer } from './server';
-
-// ─── Task handler (delegated to coordinator via autonomous loop) ──────────────
-
-async function handleTask(task: AgentTask): Promise<void> {
-  logger.info('Main', `Dispatching task (autonomous): ${task}`);
-  const result = await runAutonomous(task, runTask, sendTelegramMessage);
-
-  addMessage(
-    'assistant',
-    result.success
-      ? `Task ${task} completed in ${result.durationMs}ms via ${result.model}`
-      : `Task ${task} failed: ${result.error}`,
-    task
-  );
-
-  if (!result.success) {
-    logger.error('Main', `Task ${task} failed`, result.error);
-  }
-}
-
-// ─── Startup ──────────────────────────────────────────────────────────────────
+import { startAutonomousLoop, stopAutonomousLoop } from './loop/autonomous-loop';
 
 async function main(): Promise<void> {
-  logger.info('Main', '=== IntraClaw starting ===');
+  logger.info('Main', '=== IntraClaw starting (Autonomous Mode) ===');
 
-  // 1. Load memory files
   const memory = loadMemory();
   logger.info('Main', `Memory ready: ${memory.length} files loaded`);
 
-  // 2. Print rate limit + cost status
   const ratioStatus = rateLimiter.getStatus();
   const costStatus  = costTracker.getStatus();
   logger.info('Main', 'Rate limits', ratioStatus);
   logger.info('Main', 'Cost status', costStatus);
 
-  // 3. Register task handler and start scheduler
-  registerTaskHandler(handleTask);
-  startScheduler();
-
-  // 4. Init Telegram channel (no-op if token not set)
   initTelegram();
-
-  // 5. Start Express API server (port 3001)
   startServer();
 
-  logger.info('Main', 'IntraClaw started — scheduler active (Europe/Brussels)');
-  logger.info('Main', 'Waiting for scheduled tasks... Press Ctrl+C to stop.');
+  await startAutonomousLoop();
 
-  // 6. Graceful shutdown
+  logger.info('Main', 'IntraClaw autonomous — perceiving, deciding, acting. Press Ctrl+C to stop.');
+
   process.on('SIGINT',  () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 function shutdown(signal: string): void {
-  logger.info('Main', `Received ${signal} — shutting down gracefully`);
-  const { stopScheduler } = require('./scheduler');
-  stopScheduler();
+  logger.info('Main', `Received ${signal} — shutting down`);
+  stopAutonomousLoop();
   process.exit(0);
 }
 

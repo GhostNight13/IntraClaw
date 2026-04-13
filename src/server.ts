@@ -25,6 +25,8 @@ import {
   runAppleScriptFile, getClipboard, setClipboard,
   showNotification, getScreenBounds,
 } from './tools/computer-use';
+import { getLoopState, pauseLoop, resumeLoop } from './loop/autonomous-loop';
+import { getAllGoals, addGoal, updateGoalStatus, getPrioritizedGoals } from './reasoning/goal-manager';
 
 const PORT = parseInt(process.env.API_PORT ?? '3001', 10);
 let schedulerPaused = false;
@@ -65,7 +67,7 @@ app.use(express.json());
 // CORS for dashboard Next.js (localhost:3000)
 app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader('Access-Control-Allow-Origin', process.env.DASHBOARD_ORIGIN ?? 'http://localhost:3000');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
   next();
@@ -484,6 +486,46 @@ app.post('/api/computer-use/notify', async (req: Request, res: Response) => {
   if (!message) { res.status(400).json({ error: 'message required' }); return; }
 
   await showNotification(title, message, sound);
+  res.json({ ok: true });
+});
+
+// ─── Loop endpoints ──────────────────────────────────────────────────────────
+app.get('/api/loop/status', (_req, res) => {
+  res.json(getLoopState());
+});
+
+app.post('/api/loop/pause', (req, res) => {
+  const { reason } = req.body as { reason?: string };
+  pauseLoop(reason ?? 'Manual pause');
+  res.json({ paused: true });
+});
+
+app.post('/api/loop/resume', (_req, res) => {
+  resumeLoop();
+  res.json({ paused: false });
+});
+
+// ─── Goals endpoints ─────────────────────────────────────────────────────────
+app.get('/api/goals', (_req, res) => {
+  res.json(getPrioritizedGoals());
+});
+
+app.post('/api/goals', (req, res) => {
+  const body = req.body as {
+    title: string;
+    description: string;
+    priority: 'critical' | 'high' | 'medium' | 'low';
+    timeframe: 'now' | 'today' | 'this_week' | 'ongoing';
+    successCriteria: string;
+  };
+  const goal = addGoal(body);
+  res.json(goal);
+});
+
+app.patch('/api/goals/:id', (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body as { status: 'active' | 'paused' | 'completed' | 'failed' };
+  updateGoalStatus(id, status);
   res.json({ ok: true });
 });
 
