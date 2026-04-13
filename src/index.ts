@@ -10,6 +10,7 @@ import { costTracker } from './utils/cost-tracker';
 import { initTelegram } from './channels/telegram';
 import { startServer } from './server';
 import { startAutonomousLoop, stopAutonomousLoop } from './loop/autonomous-loop';
+import { initMCPServers, closeMCPServers } from './mcp/mcp-client';
 
 async function main(): Promise<void> {
   logger.info('Main', '=== IntraClaw starting (Autonomous Mode) ===');
@@ -23,6 +24,7 @@ async function main(): Promise<void> {
   logger.info('Main', 'Cost status', costStatus);
 
   initTelegram();
+  await initMCPServers();
   startServer();
 
   await startAutonomousLoop();
@@ -36,7 +38,7 @@ async function main(): Promise<void> {
 function shutdown(signal: string): void {
   logger.info('Main', `Received ${signal} — shutting down`);
   stopAutonomousLoop();
-  process.exit(0);
+  closeMCPServers().catch(() => {}).finally(() => process.exit(0));
 }
 
 main().catch(err => {

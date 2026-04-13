@@ -21,8 +21,10 @@
   "private": true,
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@notionhq/client": "^2.3.0",
     "better-sqlite3": "^12.8.0",
+    "chromadb": "^3.4.3",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "google-auth-library": "^10.6.2",

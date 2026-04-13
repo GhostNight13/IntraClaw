@@ -4,6 +4,7 @@ import { buildCompressedPrompt } from '../memory/core';
 import { PerceptionContext, LoopAction, LoopActionType, AgentTask, Goal } from '../types';
 import { getPrioritizedGoals } from './goal-manager';
 import { getSkillIndex } from '../skills/skill-loader';
+import { getMCPToolIndex } from '../mcp/mcp-client';
 import { logger } from '../utils/logger';
 
 const ACTION_TYPE_TO_TASK: Partial<Record<LoopActionType, AgentTask>> = {
@@ -64,6 +65,9 @@ ${formatGoals(goals)}
 
 SKILLS DISPONIBLES :
 ${getSkillIndex()}
+
+OUTILS MCP EXTERNES :
+${getMCPToolIndex()}
 
 RÈGLES DE DÉCISION :
 1. Si prospectRepliesCount > 0 → reply_check est URGENT (priorité absolue)
