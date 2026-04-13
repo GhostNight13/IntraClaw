@@ -6,6 +6,7 @@ import { getPrioritizedGoals } from './goal-manager';
 import { getSkillIndex } from '../skills/skill-loader';
 import { getMCPToolIndex } from '../mcp/mcp-client';
 import { logger } from '../utils/logger';
+import { getBusinessMemorySummary } from '../memory/business-memory';
 
 const ACTION_TYPE_TO_TASK: Partial<Record<LoopActionType, AgentTask>> = {
   prospecting:    AgentTask.PROSPECTING,
@@ -68,6 +69,8 @@ ${getSkillIndex()}
 
 OUTILS MCP EXTERNES :
 ${getMCPToolIndex()}
+
+${getBusinessMemorySummary()}
 
 RÈGLES DE DÉCISION :
 1. Si prospectRepliesCount > 0 → reply_check est URGENT (priorité absolue)

@@ -29,6 +29,8 @@ import { getLoopState, pauseLoop, resumeLoop } from './loop/autonomous-loop';
 import { getAllGoals, addGoal, updateGoalStatus, getPrioritizedGoals } from './reasoning/goal-manager';
 import { executeUniversalTask } from './executor/universal-executor';
 import { getRouterStats } from './routing/pal-router';
+import { getStrategyLineage } from './evolution/strategy-evolver';
+import { getBusinessMemoryState } from './memory/business-memory';
 
 const PORT = parseInt(process.env.API_PORT ?? '3001', 10);
 let schedulerPaused = false;
@@ -403,6 +405,12 @@ app.post('/api/improvements/:id/reject', (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ─── GET /api/strategy/lineage ───────────────────────────────────────────────
+
+app.get('/api/strategy/lineage', (_req: Request, res: Response) => {
+  res.json(getStrategyLineage());
+});
+
 // ─── POST /api/computer-use/screenshot ───────────────────────────────────────
 
 app.post('/api/computer-use/screenshot', async (_req: Request, res: Response) => {
@@ -543,6 +551,12 @@ app.patch('/api/goals/:id', (req, res) => {
   const { status } = req.body as { status: 'active' | 'paused' | 'completed' | 'failed' };
   updateGoalStatus(id, status);
   res.json({ ok: true });
+});
+
+// ─── Business Memory ──────────────────────────────────────────────────────────
+
+app.get('/api/business-memory', (_req: Request, res: Response) => {
+  res.json(getBusinessMemoryState());
 });
 
 // ─── Health check ─────────────────────────────────────────────────────────────
