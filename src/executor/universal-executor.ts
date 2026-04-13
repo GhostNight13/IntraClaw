@@ -12,6 +12,7 @@ import { AgentTask } from '../types';
 import type { ModelTier } from '../types';
 import { evaluateAmbiguity } from './ambiguity-gate';
 import { evaluateStep } from './evaluation-gate';
+import { wonderReflectCycle } from './wonder-reflect';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -154,6 +155,16 @@ export async function executeUniversalTask(
     progress.completedAt = new Date().toISOString();
     progress.finalOutput = await summarizeResults(request, progress.steps);
     notify();
+
+    // ── Phase 4: WONDER/REFLECT — learn and improve ───────────────────────────
+    try {
+      await wonderReflectCycle({
+        taskRequest: request,
+        stepsResults: progress.steps,
+      });
+    } catch (wrErr) {
+      logger.warn('UniversalExecutor', 'Wonder/Reflect cycle failed (non-fatal)', wrErr instanceof Error ? wrErr.message : wrErr);
+    }
   } catch (err) {
     progress.status = 'failed';
     progress.error = err instanceof Error ? err.message : 'Unknown error';
