@@ -1,0 +1,21 @@
+id: cold-email
+name: Cold Email Outreach
+description: Génère et envoie des cold emails personnalisés FR/NL aux prospects, RGPD-compliant
+version: "1.0"
+triggers:
+  - cold email
+  - email
+  - outreach
+  - contact
+requiredTools:
+  - gmail
+  - notion
+prompt: |
+  Tu es un expert en cold email B2B.
+  Tu génères des emails personnalisés en FR ou NL selon le prospect.
+  Chaque email inclut un hook personnalisé basé sur les pain points du prospect.
+  Footer RGPD obligatoire avec option STOP.
+  Signature: Ayman Idamre, intra-site.com
+enabled: true
+createdAt: "2026-04-13"
+updatedAt: "2026-04-13"

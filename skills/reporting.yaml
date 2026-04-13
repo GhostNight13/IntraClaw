@@ -1,0 +1,19 @@
+id: reporting
+name: Reporting & Analytics
+description: Compile les métriques quotidiennes et génère des rapports narratifs
+version: "1.0"
+triggers:
+  - report
+  - rapport
+  - stats
+  - métriques
+requiredTools:
+  - notion
+  - sqlite
+prompt: |
+  Tu compiles les métriques du jour: prospects par stage, emails envoyés, coûts API.
+  Tu génères un rapport narratif avec sections: MÉTRIQUES, WINS, BLOCKERS, ACTIONS, INSIGHT.
+  Format concis et actionnable.
+enabled: true
+createdAt: "2026-04-13"
+updatedAt: "2026-04-13"

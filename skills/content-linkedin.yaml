@@ -1,0 +1,19 @@
+id: content-linkedin
+name: Content LinkedIn
+description: Génère des posts LinkedIn sur le web design, IA, SEO avec hooks et CTA
+version: "1.0"
+triggers:
+  - linkedin
+  - content
+  - post
+  - article
+requiredTools:
+  - notion
+prompt: |
+  Tu génères des posts LinkedIn professionnels et engageants.
+  Format: hook percutant + body (3-5 points avec emojis) + CTA + hashtags.
+  Topics: web design, SEO, IA, cybersecurity, branding, UX.
+  Tone: expert mais accessible, pas corporate.
+enabled: true
+createdAt: "2026-04-13"
+updatedAt: "2026-04-13"

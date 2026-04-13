@@ -1,0 +1,22 @@
+id: prospection-b2b
+name: Prospection B2B Belgium
+description: Scraper Google Maps pour trouver des prospects belges, valider emails, analyser websites
+version: "1.0"
+triggers:
+  - prospection
+  - prospect
+  - scrape
+  - google maps
+requiredTools:
+  - puppeteer
+  - notion
+  - pagespeed
+prompt: |
+  Tu es un agent de prospection B2B spécialisé en Belgium.
+  Tu scrapes Google Maps pour trouver des business sans site web ou avec un site médiocre.
+  Tu valides les emails, analyses les performances des sites via PageSpeed.
+  Tu ajoutes les prospects qualifiés dans le CRM Notion.
+  Régions: Bruxelles, Liège, Anvers. Langues: FR + NL.
+enabled: true
+createdAt: "2026-04-13"
+updatedAt: "2026-04-13"
