@@ -6,6 +6,7 @@ import { rateLimiter } from './utils/rate-limiter';
 import { costTracker } from './utils/cost-tracker';
 import { callClaude, ClaudeRateLimitError } from './claude';
 import { callGemma, callLlama, isOllamaAvailable } from './ollama';
+import { resolveEffectiveTier, recordSuccess, recordFailure } from './routing/pal-router';
 import type { AIRequest, AIResponse } from './types';
 
 // ─── Response cache ────────────────────────────────────────────────────────────
@@ -91,13 +92,22 @@ export async function ask(request: AIRequest): Promise<AIResponse> {
   incrementDailyCount();
 
   // 2. Try Claude first (uses Max subscription — no artificial cap)
+  //    PAL Router: resolve effective tier (may escalate or downgrade based on recent history)
+  const requestedTier = request.modelTier ?? 'balanced';
+  const effectiveTier = resolveEffectiveTier(requestedTier);
+  const claudeRequest: AIRequest = effectiveTier !== requestedTier
+    ? { ...request, modelTier: effectiveTier }
+    : request;
+
   rateLimiter.check('claude'); // increments counter for observability only, never blocks
   try {
-    const response = await callClaude(request);
+    const response = await callClaude(claudeRequest);
     costTracker.record(response.inputTokens, response.outputTokens); // tracking only
+    recordSuccess(effectiveTier);
     if (useCache) writeCache(getCacheKey(request), response);
     return response;
   } catch (err) {
+    recordFailure(effectiveTier);
     if (err instanceof ClaudeRateLimitError) {
       // Real Anthropic rate limit — fall through to Ollama
       logger.warn('AI', 'Claude rate limited by Anthropic — falling back to Ollama', err.message);

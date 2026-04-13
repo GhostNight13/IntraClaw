@@ -28,6 +28,7 @@ import {
 import { getLoopState, pauseLoop, resumeLoop } from './loop/autonomous-loop';
 import { getAllGoals, addGoal, updateGoalStatus, getPrioritizedGoals } from './reasoning/goal-manager';
 import { executeUniversalTask } from './executor/universal-executor';
+import { getRouterStats } from './routing/pal-router';
 
 const PORT = parseInt(process.env.API_PORT ?? '3001', 10);
 let schedulerPaused = false;
@@ -545,6 +546,10 @@ app.patch('/api/goals/:id', (req, res) => {
 });
 
 // ─── Health check ─────────────────────────────────────────────────────────────
+
+app.get('/api/router/stats', (_req: Request, res: Response) => {
+  res.json(getRouterStats());
+});
 
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ ok: true, uptime: process.uptime() });
