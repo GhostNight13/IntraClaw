@@ -11,6 +11,7 @@ import { logger } from '../utils/logger';
 import { AgentTask } from '../types';
 import type { ModelTier } from '../types';
 import { evaluateAmbiguity } from './ambiguity-gate';
+import { evaluateStep } from './evaluation-gate';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -116,6 +117,23 @@ export async function executeUniversalTask(
       notify();
 
       const stepResult = await executeStep(step, i + 1, progress);
+
+      if (stepResult.success) {
+        const evaluation = await evaluateStep({
+          originalRequest: request,
+          stepDescription: step.description,
+          stepOutput: stepResult.output,
+          tool: step.tool,
+          filePath: step.filePath,
+          isFinalStep: i === plan.length - 1,
+        });
+
+        if (!evaluation.passed) {
+          stepResult.success = false;
+          stepResult.output += `\n\n⚠️ Evaluation failed (stage ${evaluation.stage}): ${evaluation.feedback}`;
+        }
+      }
+
       progress.steps.push(stepResult);
 
       if (!stepResult.success) {
