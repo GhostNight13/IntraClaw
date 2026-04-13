@@ -8,6 +8,7 @@
 
 import { insertAction } from '../db';
 import { addLearnedFact } from '../memory/enhanced';
+import { storeMemory, isVectorMemoryAvailable } from '../memory/vector-memory';
 import { logger } from '../utils/logger';
 import type { AgentResult, LoopAction } from '../types';
 
@@ -106,7 +107,17 @@ export async function recordObservation(obs: Observation): Promise<void> {
     }
   }
 
-  // 3. Summary log
+  // 3. Store in vector memory if available
+  if (isVectorMemoryAvailable() && result?.success) {
+    await storeMemory({
+      content: `${action.type}: ${action.reason}. Durée: ${obs.durationMs}ms.`,
+      category: 'action',
+      source: action.type,
+      metadata: { success: true, durationMs: obs.durationMs },
+    }).catch(() => {});
+  }
+
+  // 4. Summary log
   const factsSuffix = facts.length > 0 ? ` | ${facts.length} fait(s) appris` : '';
   logger.info(
     'ObservationRecorder',

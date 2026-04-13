@@ -11,6 +11,7 @@ import { initTelegram } from './channels/telegram';
 import { startServer } from './server';
 import { startAutonomousLoop, stopAutonomousLoop } from './loop/autonomous-loop';
 import { initMCPServers, closeMCPServers } from './mcp/mcp-client';
+import { initVectorMemory } from './memory/vector-memory';
 
 async function main(): Promise<void> {
   logger.info('Main', '=== IntraClaw starting (Autonomous Mode) ===');
@@ -25,6 +26,7 @@ async function main(): Promise<void> {
 
   initTelegram();
   await initMCPServers();
+  await initVectorMemory();
   startServer();
 
   await startAutonomousLoop();
