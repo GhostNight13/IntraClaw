@@ -10,6 +10,7 @@ import { executeSkill } from '../skills/skill-executor';
 import { logger } from '../utils/logger';
 import { AgentTask } from '../types';
 import type { ModelTier } from '../types';
+import { evaluateAmbiguity } from './ambiguity-gate';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -79,9 +80,22 @@ export async function executeUniversalTask(
   notify();
 
   try {
+    // ── Phase 0: AMBIGUITY CHECK ──────────────────────────────────────────────
+    const ambiguity = await evaluateAmbiguity(request);
+    if (!ambiguity.canProceed) {
+      progress.status = 'failed';
+      progress.error = `Demande trop floue (score: ${ambiguity.score.toFixed(2)}). Questions : ${ambiguity.questions.join(' | ')}`;
+      progress.finalOutput = `❓ J'ai besoin de précisions :\n${ambiguity.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`;
+      notify();
+      return progress;
+    }
+
+    // Use clarified request if available
+    const clarifiedRequest = ambiguity.clarifiedRequest ?? request;
+
     // ── Phase 1: PLAN ─────────────────────────────────────────────────────────
-    logger.info('UniversalExecutor', `Planning task: ${request.slice(0, 100)}`);
-    const plan = await planTask(request);
+    logger.info('UniversalExecutor', `Planning task: ${clarifiedRequest.slice(0, 100)}`);
+    const plan = await planTask(clarifiedRequest);
 
     if (!plan || plan.length === 0) {
       progress.status = 'failed';
