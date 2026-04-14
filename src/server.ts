@@ -54,6 +54,8 @@ import { getThoughts, getRecentThoughts } from './reasoning/thought-logger';
 import { readFile as coderReadFile, writeFile as coderWriteFile, previewWrite } from './tools/coder/code-writer';
 import { runCode } from './tools/coder/code-runner';
 import { listSnapshots, rollbackToSnapshot } from './tools/coder/rollback';
+import { createEntity, updateEntity, deleteEntity, listEntities, searchEntities, createRelationship, deleteRelationship, getNeighbors } from './memory/graph/graph-memory';
+import { extractSubgraph, getGraphStats } from './memory/graph/graph-query';
 
 const PORT = parseInt(process.env.API_PORT ?? '3001', 10);
 let schedulerPaused = false;
@@ -1081,6 +1083,63 @@ app.post('/api/code/rollback', (req: Request, res: Response) => {
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Rollback failed' });
   }
+});
+
+// ─── Graph Memory endpoints ───────────────────────────────────────────────────
+
+app.get('/api/graph/stats', (_req: Request, res: Response) => {
+  res.json(getGraphStats());
+});
+
+app.get('/api/graph/entities', (req: Request, res: Response) => {
+  const { type, q } = req.query as { type?: string; q?: string };
+  if (q) {
+    res.json(searchEntities(q, type as import('./memory/graph/types').EntityType | undefined));
+  } else {
+    res.json(listEntities(type as import('./memory/graph/types').EntityType | undefined));
+  }
+});
+
+app.post('/api/graph/entities', (req: Request, res: Response) => {
+  const { type, name, properties } = req.body as { type?: string; name?: string; properties?: Record<string, unknown> };
+  if (!type || !name) { res.status(400).json({ error: 'type and name required' }); return; }
+  res.status(201).json(createEntity(type as import('./memory/graph/types').EntityType, name, properties));
+});
+
+app.patch('/api/graph/entities/:id', (req: Request, res: Response) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const result = updateEntity(id, req.body as { name?: string; properties?: Record<string, unknown> });
+  if (!result) { res.status(404).json({ error: 'Entity not found' }); return; }
+  res.json(result);
+});
+
+app.delete('/api/graph/entities/:id', (req: Request, res: Response) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  deleteEntity(id);
+  res.json({ ok: true });
+});
+
+app.get('/api/graph/entities/:id/neighbors', (req: Request, res: Response) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  res.json(getNeighbors(id));
+});
+
+app.get('/api/graph/entities/:id/subgraph', (req: Request, res: Response) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const depth = parseInt((req.query.depth as string) ?? '2', 10);
+  res.json(extractSubgraph(id, Math.min(depth, 4)));
+});
+
+app.post('/api/graph/relationships', (req: Request, res: Response) => {
+  const { fromId, toId, type, weight, properties } = req.body as { fromId?: string; toId?: string; type?: string; weight?: number; properties?: Record<string, unknown> };
+  if (!fromId || !toId || !type) { res.status(400).json({ error: 'fromId, toId, type required' }); return; }
+  res.status(201).json(createRelationship(fromId, toId, type as import('./memory/graph/types').RelationshipType, weight, properties));
+});
+
+app.delete('/api/graph/relationships/:id', (req: Request, res: Response) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  deleteRelationship(id);
+  res.json({ ok: true });
 });
 
 // ─── Health check ─────────────────────────────────────────────────────────────

@@ -179,6 +179,29 @@ function migrate(db: Database.Database): void {
       created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
     CREATE INDEX IF NOT EXISTS idx_snapshot_path ON file_snapshots(file_path, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS graph_entities (
+      id          TEXT PRIMARY KEY,
+      type        TEXT NOT NULL,
+      name        TEXT NOT NULL,
+      properties  TEXT NOT NULL DEFAULT '{}',
+      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS graph_relationships (
+      id          TEXT PRIMARY KEY,
+      from_id     TEXT NOT NULL REFERENCES graph_entities(id) ON DELETE CASCADE,
+      to_id       TEXT NOT NULL REFERENCES graph_entities(id) ON DELETE CASCADE,
+      type        TEXT NOT NULL,
+      weight      REAL NOT NULL DEFAULT 1.0,
+      properties  TEXT NOT NULL DEFAULT '{}',
+      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_graph_entity_type ON graph_entities(type);
+    CREATE INDEX IF NOT EXISTS idx_graph_rel_from    ON graph_relationships(from_id);
+    CREATE INDEX IF NOT EXISTS idx_graph_rel_to      ON graph_relationships(to_id);
   `);
 }
 
