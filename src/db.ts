@@ -46,6 +46,37 @@ function migrate(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_actions_created  ON agent_actions(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_notif_read       ON notifications(read, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS marketplace_skills (
+      id          TEXT PRIMARY KEY,
+      author_id   TEXT NOT NULL,
+      author_name TEXT NOT NULL,
+      name        TEXT NOT NULL,
+      slug        TEXT NOT NULL UNIQUE,
+      description TEXT NOT NULL,
+      version     TEXT NOT NULL,
+      content     TEXT NOT NULL,
+      tags        TEXT NOT NULL DEFAULT '[]',
+      downloads   INTEGER NOT NULL DEFAULT 0,
+      avg_rating  REAL    NOT NULL DEFAULT 0,
+      published   INTEGER NOT NULL DEFAULT 1,
+      created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS skill_ratings (
+      id          TEXT PRIMARY KEY,
+      skill_id    TEXT NOT NULL,
+      user_id     TEXT NOT NULL,
+      score       INTEGER NOT NULL CHECK(score BETWEEN 1 AND 5),
+      comment     TEXT,
+      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      UNIQUE(skill_id, user_id),
+      FOREIGN KEY(skill_id) REFERENCES marketplace_skills(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_msk_slug      ON marketplace_skills(slug);
+    CREATE INDEX IF NOT EXISTS idx_msk_rating    ON marketplace_skills(avg_rating DESC);
+    CREATE INDEX IF NOT EXISTS idx_msk_downloads ON marketplace_skills(downloads DESC);
   `);
 }
 
