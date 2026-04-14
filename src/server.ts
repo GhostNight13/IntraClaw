@@ -64,6 +64,9 @@ import { getAuditLog } from './compliance/audit-log';
 import { exportUserData, deleteUserData } from './compliance/gdpr';
 import { recordConsent, getConsents } from './compliance/consent';
 import { checkForUpdates, applyUpdate } from './updater/ota-updater';
+import { getOrCreateSubscription, getUserPlan, canUserDoTask } from './billing/subscription';
+import { createCheckoutSession, createPortalSession, handleStripeWebhook } from './billing/stripe-client';
+import { PLANS } from './billing/types';
 
 const PORT = parseInt(process.env.API_PORT ?? '3001', 10);
 let schedulerPaused = false;
@@ -125,6 +128,98 @@ app.use('/api/workflows', workflowsRouter);
 // ─── Webhook routes (raw body for HMAC) ──────────────────────────────────────
 app.use('/webhooks', webhookRouter);
 app.use('/api/webhooks', apiWebhookRouter);
+
+// ─── Billing routes ───────────────────────────────────────────────────────────
+
+// Stripe webhook must use raw body — register BEFORE express.json() applies to this path
+app.post('/api/billing/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req: Request, res: Response) => {
+    const signature = req.headers['stripe-signature'];
+    if (!signature || typeof signature !== 'string') {
+      res.status(400).json({ error: 'Missing stripe-signature header' });
+      return;
+    }
+    try {
+      await handleStripeWebhook(req.body as Buffer, signature);
+      res.json({ received: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('Billing', 'Webhook error', msg);
+      res.status(400).json({ error: msg });
+    }
+  },
+);
+
+app.get('/api/billing/status', async (req: Request, res: Response) => {
+  const userId = (req.headers['x-user-id'] as string) ?? 'default';
+  const sub = getOrCreateSubscription(userId);
+  const plan = sub.plan;
+  const features = PLANS[plan];
+  const canDoTask = canUserDoTask(userId);
+
+  // Count tasks this month for free plan meter
+  let tasksThisMonth = 0;
+  if (plan === 'free') {
+    const db = (await import('./db')).getDb();
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const row = db.prepare(
+      `SELECT COUNT(*) AS cnt FROM agent_actions WHERE created_at >= ?`,
+    ).get(startOfMonth.toISOString()) as { cnt: number };
+    tasksThisMonth = row.cnt;
+  }
+
+  res.json({ subscription: sub, plan, features, canDoTask, tasksThisMonth });
+});
+
+app.post('/api/billing/checkout', async (req: Request, res: Response) => {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    res.status(501).json({ error: 'Stripe not configured' });
+    return;
+  }
+  const userId = (req.headers['x-user-id'] as string) ?? 'default';
+  const { plan } = req.body as { plan?: string };
+  if (plan !== 'pro' && plan !== 'team') {
+    res.status(400).json({ error: 'plan must be pro or team' });
+    return;
+  }
+  const base = process.env.DASHBOARD_URL ?? 'http://localhost:3000';
+  try {
+    const url = await createCheckoutSession(
+      userId,
+      plan,
+      `${base}/billing?success=1`,
+      `${base}/billing?canceled=1`,
+    );
+    res.json({ url });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+});
+
+app.post('/api/billing/portal', async (req: Request, res: Response) => {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    res.status(501).json({ error: 'Stripe not configured' });
+    return;
+  }
+  const userId = (req.headers['x-user-id'] as string) ?? 'default';
+  const sub = getOrCreateSubscription(userId);
+  if (!sub.stripeCustomerId) {
+    res.status(400).json({ error: 'No Stripe customer found for this user' });
+    return;
+  }
+  const base = process.env.DASHBOARD_URL ?? 'http://localhost:3000';
+  try {
+    const url = await createPortalSession(sub.stripeCustomerId, `${base}/billing`);
+    res.json({ url });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+});
 
 // ─── GET /api/status ──────────────────────────────────────────────────────────
 
