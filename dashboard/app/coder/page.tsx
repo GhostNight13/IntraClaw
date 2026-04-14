@@ -1,6 +1,8 @@
 'use client';
 import { useState } from 'react';
-import { Code2, Play, Save, RotateCcw, GitDiff, Loader2 } from 'lucide-react';
+import { Code2, Play, Save, GitDiff, Loader2 } from 'lucide-react';
+import DiffViewer from '@/components/DiffViewer';
+import RollbackPanel from '@/components/RollbackPanel';
 
 interface RunResult {
   stdout: string;
@@ -14,12 +16,7 @@ interface DiffResult {
   patch: string;
   additions: number;
   deletions: number;
-}
-
-interface Snapshot {
-  id: string;
-  filePath: string;
-  createdAt: string;
+  originalContent?: string;
 }
 
 const BASE = 'http://localhost:3001';
@@ -31,7 +28,8 @@ export default function CoderPage() {
   const [running, setRunning] = useState(false);
   const [filePath, setFilePath] = useState('');
   const [diffResult, setDiffResult] = useState<DiffResult | null>(null);
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [originalContent, setOriginalContent] = useState('');
+  const [pendingWrite, setPendingWrite] = useState(false);
   const [tab, setTab] = useState<'run' | 'write' | 'snapshots'>('run');
 
   async function runCode() {
@@ -51,12 +49,26 @@ export default function CoderPage() {
 
   async function previewDiff() {
     if (!filePath) return;
+    // Fetch the existing file content for DiffViewer's "original" side
+    let orig = '';
+    try {
+      const readR = await fetch(`${BASE}/api/code/read?path=${encodeURIComponent(filePath)}`);
+      if (readR.ok) {
+        const readData = (await readR.json()) as { content?: string };
+        orig = readData.content ?? '';
+      }
+    } catch {
+      // file may not exist yet — treat as empty
+    }
+    setOriginalContent(orig);
+
     const r = await fetch(`${BASE}/api/code/diff`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filePath, newContent: code }),
     });
     setDiffResult(await r.json() as DiffResult);
+    setPendingWrite(true);
   }
 
   async function writeFile() {
@@ -67,24 +79,12 @@ export default function CoderPage() {
       body: JSON.stringify({ filePath, content: code }),
     });
     setDiffResult(null);
-    await loadSnapshots();
+    setPendingWrite(false);
   }
 
-  async function loadSnapshots() {
-    const url = filePath
-      ? `${BASE}/api/code/snapshots?path=${encodeURIComponent(filePath)}`
-      : `${BASE}/api/code/snapshots`;
-    const r = await fetch(url);
-    setSnapshots(await r.json() as Snapshot[]);
-  }
-
-  async function rollback(id: string) {
-    await fetch(`${BASE}/api/code/rollback`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ snapshotId: id }),
-    });
-    await loadSnapshots();
+  function cancelDiff() {
+    setDiffResult(null);
+    setPendingWrite(false);
   }
 
   return (
@@ -99,7 +99,7 @@ export default function CoderPage() {
         {(['run', 'write', 'snapshots'] as const).map(t => (
           <button
             key={t}
-            onClick={() => { setTab(t); if (t === 'snapshots') void loadSnapshots(); }}
+            onClick={() => { setTab(t); }}
             className={`px-4 py-1.5 rounded text-sm font-medium transition-colors capitalize ${tab === t ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'}`}
           >
             {t}
@@ -158,59 +158,55 @@ export default function CoderPage() {
               type="text"
               placeholder="/path/to/file.ts"
               value={filePath}
-              onChange={e => setFilePath(e.target.value)}
+              onChange={e => { setFilePath(e.target.value); setDiffResult(null); setPendingWrite(false); }}
               className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-green-500"
             />
             <button
               onClick={() => void previewDiff()}
-              className="bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg px-3 py-2 text-sm flex items-center gap-1.5"
+              disabled={!filePath}
+              className="bg-zinc-700 hover:bg-zinc-600 disabled:opacity-40 text-white rounded-lg px-3 py-2 text-sm flex items-center gap-1.5"
             >
               <GitDiff className="w-4 h-4" /> Diff
             </button>
-            <button
-              onClick={() => void writeFile()}
-              className="bg-green-700 hover:bg-green-600 text-white rounded-lg px-3 py-2 text-sm flex items-center gap-1.5"
-            >
-              <Save className="w-4 h-4" /> Write
-            </button>
+            {/* Write button only available when NOT in pending-confirm state */}
+            {!pendingWrite && (
+              <button
+                onClick={() => void writeFile()}
+                disabled={!filePath}
+                className="bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white rounded-lg px-3 py-2 text-sm flex items-center gap-1.5"
+              >
+                <Save className="w-4 h-4" /> Write
+              </button>
+            )}
           </div>
           <textarea
             value={code}
-            onChange={e => setCode(e.target.value)}
+            onChange={e => { setCode(e.target.value); setDiffResult(null); setPendingWrite(false); }}
             rows={12}
             className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 text-white text-sm font-mono resize-y focus:outline-none focus:border-green-500"
           />
-          {diffResult && (
-            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
-              <div className="flex gap-4 text-xs mb-3">
-                <span className="text-green-400">+{diffResult.additions} additions</span>
-                <span className="text-red-400">-{diffResult.deletions} deletions</span>
-              </div>
-              <pre className="text-xs font-mono whitespace-pre-wrap text-zinc-300 overflow-x-auto max-h-64">{diffResult.patch}</pre>
-            </div>
+          {/* DiffViewer shown after clicking Diff — user must confirm before write */}
+          {diffResult && pendingWrite && (
+            <DiffViewer
+              original={originalContent}
+              modified={code}
+              filePath={filePath}
+              showActions={true}
+              onConfirm={() => void writeFile()}
+              onCancel={cancelDiff}
+            />
           )}
         </div>
       )}
 
       {tab === 'snapshots' && (
-        <div className="space-y-3">
-          {snapshots.length === 0 ? (
-            <p className="text-zinc-600 text-sm text-center py-8">No snapshots yet</p>
-          ) : snapshots.map(snap => (
-            <div key={snap.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex items-center justify-between">
-              <div>
-                <p className="text-white text-sm font-mono">{snap.filePath}</p>
-                <p className="text-zinc-500 text-xs">{new Date(snap.createdAt).toLocaleString()} · {snap.id}</p>
-              </div>
-              <button
-                onClick={() => void rollback(snap.id)}
-                className="text-zinc-400 hover:text-orange-400 transition-colors flex items-center gap-1 text-sm"
-              >
-                <RotateCcw className="w-4 h-4" /> Restore
-              </button>
-            </div>
-          ))}
-        </div>
+        <RollbackPanel
+          filePath={filePath}
+          onRollback={(_snapshotId, content) => {
+            setCode(content);
+            setTab('write');
+          }}
+        />
       )}
     </div>
   );
