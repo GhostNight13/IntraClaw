@@ -1,0 +1,6 @@
+{
+  "not_found": "Bron niet gevonden.",
+  "unauthorized": "U bent niet gemachtigd om deze actie uit te voeren.",
+  "server_error": "Er is een interne serverfout opgetreden. Probeer het later opnieuw.",
+  "invalid_input": "De opgegeven invoer is ongeldig. Controleer en probeer opnieuw."
+}

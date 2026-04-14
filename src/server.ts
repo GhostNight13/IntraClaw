@@ -31,6 +31,15 @@ import { executeUniversalTask } from './executor/universal-executor';
 import { getRouterStats } from './routing/pal-router';
 import { getStrategyLineage } from './evolution/strategy-evolver';
 import { getBusinessMemoryState } from './memory/business-memory';
+import { runREMCycle } from './memory/dreaming';
+import { generateEmailDigest, formatDigestForTelegram, getRules, addRule, deleteRule } from './tools/email-manager';
+import { authRouter } from './auth/routes';
+import { setLanguage, getCurrentLanguage } from './i18n';
+import { updateUser, findUserById } from './users/user-store';
+import { initCalendar, listAllEvents, createCalendarEvent, deleteCalendarEvent, findFreeSlots, getTodaysAgenda, isCalendarAvailable } from './tools/calendar';
+import { isConnected as isHAConnected, getStates as getHAStates } from './tools/smart-home/ha-client';
+import { listDevices, controlDevice } from './tools/smart-home/devices';
+import { generateImageWithFallback, generateVideo, textToSpeech, listMedia } from './tools/media';
 
 const PORT = parseInt(process.env.API_PORT ?? '3001', 10);
 let schedulerPaused = false;
@@ -71,11 +80,14 @@ app.use(express.json());
 // CORS for dashboard Next.js (localhost:3000)
 app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader('Access-Control-Allow-Origin', process.env.DASHBOARD_ORIGIN ?? 'http://localhost:3000');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
   if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
   next();
 });
+
+// ─── Auth routes ─────────────────────────────────────────────────────────────
+app.use('/auth', authRouter);
 
 // ─── GET /api/status ──────────────────────────────────────────────────────────
 
@@ -557,6 +569,343 @@ app.patch('/api/goals/:id', (req, res) => {
 
 app.get('/api/business-memory', (_req: Request, res: Response) => {
   res.json(getBusinessMemoryState());
+});
+
+// ─── POST /api/memory/rem — Force un cycle REM ─────────────────────────────
+
+app.post('/api/memory/rem', async (_req: Request, res: Response) => {
+  try {
+    const report = await runREMCycle();
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Channels endpoints ───────────────────────────────────────────────────────
+
+// GET /api/channels/status — État de tous les canaux actifs
+app.get('/api/channels/status', (_req: Request, res: Response) => {
+  const { getActiveChannels } = require('./channels/gateway') as { getActiveChannels: () => string[] };
+  res.json({
+    active: getActiveChannels(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// POST /api/channels/authorize — Autorise un sender sur un canal
+app.post('/api/channels/authorize', (req: Request, res: Response) => {
+  const { addAuthorizedUser } = require('./channels/session-store') as {
+    addAuthorizedUser: (u: { channelId: string; senderId: string; userId?: string }) => void;
+  };
+  const { channelId, senderId, userId } = req.body as {
+    channelId?: string;
+    senderId?: string;
+    userId?: string;
+  };
+  if (!channelId || !senderId) {
+    res.status(400).json({ error: 'channelId et senderId requis' });
+    return;
+  }
+  addAuthorizedUser({ channelId, senderId, userId });
+  res.json({ success: true, message: `${senderId} autorisé sur ${channelId}` });
+});
+
+// DELETE /api/channels/authorize/:channelId/:senderId
+app.delete('/api/channels/authorize/:channelId/:senderId', (req: Request, res: Response) => {
+  const { removeAuthorizedUser } = require('./channels/session-store') as {
+    removeAuthorizedUser: (channelId: string, senderId: string) => void;
+  };
+  removeAuthorizedUser(String(req.params['channelId']), String(req.params['senderId']));
+  res.json({ success: true });
+});
+
+// GET /api/channels/history/:channelId/:senderId
+app.get('/api/channels/history/:channelId/:senderId', (req: Request, res: Response) => {
+  const { getConversationHistory } = require('./channels/session-store') as {
+    getConversationHistory: (channelId: string, senderId: string, limit: number) => unknown[];
+  };
+  const history = getConversationHistory(
+    String(req.params['channelId']),
+    String(req.params['senderId']),
+    parseInt((req.query['limit'] as string) || '20', 10),
+  );
+  res.json({ history });
+});
+
+// ─── Email Manager endpoints ─────────────────────────────────────────────────
+
+// GET /api/email/digest
+app.get('/api/email/digest', async (_req: Request, res: Response) => {
+  try {
+    const digest = await generateEmailDigest();
+    res.json(digest);
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// GET /api/email/digest/telegram — formaté pour Telegram
+app.get('/api/email/digest/telegram', async (_req: Request, res: Response) => {
+  try {
+    const digest = await generateEmailDigest();
+    const formatted = formatDigestForTelegram(digest);
+    res.json({ text: formatted });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// GET /api/email/rules — liste les règles
+app.get('/api/email/rules', (_req: Request, res: Response) => {
+  res.json({ rules: getRules() });
+});
+
+// POST /api/email/rules — ajoute une règle
+app.post('/api/email/rules', (req: Request, res: Response) => {
+  try {
+    const rule = addRule(req.body);
+    res.status(201).json({ rule });
+  } catch (err: unknown) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// DELETE /api/email/rules/:id
+app.delete('/api/email/rules/:id', (req: Request, res: Response) => {
+  const ok = deleteRule(String(req.params['id']));
+  if (ok) res.json({ success: true });
+  else res.status(404).json({ error: 'Règle non trouvée' });
+});
+
+// ─── Calendar endpoints ────────────────────────────────────────────────────────
+
+// GET /api/calendar/status
+app.get('/api/calendar/status', (_req: Request, res: Response) => {
+  res.json({ available: isCalendarAvailable() });
+});
+
+// GET /api/calendar/today
+app.get('/api/calendar/today', async (_req: Request, res: Response) => {
+  try {
+    const agenda = await getTodaysAgenda();
+    res.json({ agenda });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// GET /api/calendar/events?from=ISO&to=ISO
+app.get('/api/calendar/events', async (req: Request, res: Response) => {
+  try {
+    const from = new Date(req.query.from as string || new Date().toISOString());
+    const to   = new Date(req.query.to as string || new Date(Date.now() + 7 * 86400000).toISOString());
+    const events = await listAllEvents(from, to);
+    res.json({ events, count: events.length });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// POST /api/calendar/events
+app.post('/api/calendar/events', async (req: Request, res: Response) => {
+  try {
+    const { title, description, startAt, endAt, location, attendees, isAllDay } = req.body as {
+      title?: string; description?: string; startAt?: string; endAt?: string;
+      location?: string; attendees?: { email: string; name?: string }[]; isAllDay?: boolean;
+    };
+    if (!title || !startAt || !endAt) {
+      res.status(400).json({ error: 'title, startAt, endAt requis' });
+      return;
+    }
+    const event = await createCalendarEvent({
+      title, description, location, attendees, isAllDay,
+      startAt: new Date(startAt),
+      endAt:   new Date(endAt),
+    });
+    res.json({ event });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// DELETE /api/calendar/events/:id
+app.delete('/api/calendar/events/:id', async (req: Request, res: Response) => {
+  try {
+    const source = (req.query.source as 'google' | 'outlook') || 'google';
+    await deleteCalendarEvent(String(req.params['id']), source);
+    res.json({ ok: true });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// GET /api/calendar/free-slots?duration=60&from=ISO&to=ISO
+app.get('/api/calendar/free-slots', async (req: Request, res: Response) => {
+  try {
+    const duration = parseInt(req.query.duration as string) || 60;
+    const from     = new Date(req.query.from as string || new Date().toISOString());
+    const to       = new Date(req.query.to as string || new Date(Date.now() + 7 * 86400000).toISOString());
+    const slots = await findFreeSlots(duration, from, to);
+    res.json({ slots, count: slots.length });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ─── Smart Home endpoints ─────────────────────────────────────────────────────
+
+// GET /api/smart-home/status
+app.get('/api/smart-home/status', async (_req: Request, res: Response) => {
+  try {
+    const haConnected = isHAConnected();
+    let device_count = 0;
+    if (haConnected) {
+      const states = await getHAStates();
+      device_count = states.length;
+    }
+    res.json({ connected: haConnected, device_count });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// GET /api/smart-home/devices?domain=light
+app.get('/api/smart-home/devices', async (req: Request, res: Response) => {
+  try {
+    const domain = req.query['domain'] as string | undefined;
+    const devices = await listDevices(domain);
+    res.json({ devices, count: devices.length });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// POST /api/smart-home/control
+app.post('/api/smart-home/control', async (req: Request, res: Response) => {
+  const { command } = req.body as { command?: string };
+  if (!command?.trim()) {
+    res.status(400).json({ error: 'command required' });
+    return;
+  }
+  try {
+    const result = await controlDevice(command.trim());
+    res.json({ result });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ─── Media Generation endpoints ──────────────────────────────────────────────
+
+// GET /api/media — list all generated media files
+app.get('/api/media', (_req: Request, res: Response) => {
+  try {
+    const files = listMedia();
+    res.json({ files, count: files.length });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// POST /api/media/image — { prompt, width?, height? }
+app.post('/api/media/image', async (req: Request, res: Response) => {
+  const { prompt, width, height } = req.body as {
+    prompt?: string; width?: number; height?: number;
+  };
+  if (!prompt?.trim()) {
+    res.status(400).json({ error: 'prompt required' });
+    return;
+  }
+  try {
+    const result = await generateImageWithFallback(prompt.trim(), { width, height });
+    res.json(result);
+  } catch (err) {
+    logger.error('Server', '/api/media/image error', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// POST /api/media/video — { prompt }
+app.post('/api/media/video', async (req: Request, res: Response) => {
+  const { prompt } = req.body as { prompt?: string };
+  if (!prompt?.trim()) {
+    res.status(400).json({ error: 'prompt required' });
+    return;
+  }
+  try {
+    const result = await generateVideo(prompt.trim());
+    res.json(result);
+  } catch (err) {
+    logger.error('Server', '/api/media/video error', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// POST /api/media/tts — { text, language? }
+app.post('/api/media/tts', async (req: Request, res: Response) => {
+  const { text, language = 'fr' } = req.body as { text?: string; language?: string };
+  if (!text?.trim()) {
+    res.status(400).json({ error: 'text required' });
+    return;
+  }
+  try {
+    const result = await textToSpeech(text.trim(), language);
+    res.json({ localPath: result.localPath, engine: result.engine, language: result.language });
+  } catch (err) {
+    logger.error('Server', '/api/media/tts error', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ─── i18n endpoints ───────────────────────────────────────────────────────────
+
+const SUPPORTED_LANGUAGES = [
+  { code: 'en', name: 'English' },
+  { code: 'fr', name: 'Français' },
+  { code: 'nl', name: 'Nederlands' },
+  { code: 'es', name: 'Español' },
+  { code: 'de', name: 'Deutsch' },
+  { code: 'ar', name: 'العربية', rtl: true },
+  { code: 'pt', name: 'Português' },
+  { code: 'it', name: 'Italiano' },
+  { code: 'zh', name: '中文' },
+  { code: 'ja', name: '日本語' },
+];
+
+// GET /api/i18n/languages
+app.get('/api/i18n/languages', (_req: Request, res: Response) => {
+  res.json({
+    languages: SUPPORTED_LANGUAGES,
+    current: getCurrentLanguage(),
+  });
+});
+
+// POST /api/i18n/language — { locale: 'en' }
+app.post('/api/i18n/language', (req: Request, res: Response) => {
+  const { locale } = req.body as { locale?: string };
+  const supported = SUPPORTED_LANGUAGES.map(l => l.code);
+
+  if (!locale || !supported.includes(locale)) {
+    res.status(400).json({
+      error: `Invalid locale. Supported: ${supported.join(', ')}`,
+    });
+    return;
+  }
+
+  setLanguage(locale);
+
+  // Persist to user profile if authenticated
+  const userId = (req as Request & { userId?: string }).userId;
+  if (userId) {
+    const updated = updateUser(userId, { locale });
+    if (!updated) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+  }
+
+  res.json({ ok: true, locale, current: getCurrentLanguage() });
 });
 
 // ─── Health check ─────────────────────────────────────────────────────────────

@@ -1,0 +1,14 @@
+{
+  "morning_brief": {
+    "greeting": "صباح الخير! إليك ملخص يومك.",
+    "status_section": "حالة النظام",
+    "priorities_section": "أولويات اليوم",
+    "opportunities_section": "الفرص الجديدة",
+    "budget_section": "نظرة عامة على الميزانية",
+    "be_positive": "نتمنى لك يوماً منتجاً ومليئاً بالإنجازات!"
+  },
+  "prospecting": {
+    "looking_for": "جارٍ البحث عن عملاء محتملين جدد...",
+    "found": "تم العثور على {{count}} عميل/عملاء محتمل(ين) جديد(ين)."
+  }
+}

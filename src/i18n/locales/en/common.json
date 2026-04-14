@@ -1,0 +1,9 @@
+{
+  "welcome": "Welcome to IntraClaw",
+  "morning_brief": "Good morning! Here is your daily briefing.",
+  "good_morning": "Good morning",
+  "task_complete": "Task completed successfully.",
+  "error": "An error occurred.",
+  "processing": "Processing your request...",
+  "success": "Operation successful."
+}

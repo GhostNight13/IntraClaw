@@ -1,0 +1,9 @@
+{
+  "welcome": "IntraClaw へようこそ",
+  "morning_brief": "おはようございます！本日のブリーフィングです。",
+  "good_morning": "おはようございます",
+  "task_complete": "タスクが正常に完了しました。",
+  "error": "エラーが発生しました。",
+  "processing": "リクエストを処理中です...",
+  "success": "操作が成功しました。"
+}

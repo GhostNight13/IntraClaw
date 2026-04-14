@@ -1,0 +1,14 @@
+{
+  "morning_brief": {
+    "greeting": "Goedemorgen! Hier is uw dagelijkse samenvatting.",
+    "status_section": "Systeemstatus",
+    "priorities_section": "Prioriteiten van vandaag",
+    "opportunities_section": "Nieuwe kansen",
+    "budget_section": "Budgetoverzicht",
+    "be_positive": "Fijne productieve dag!"
+  },
+  "prospecting": {
+    "looking_for": "Zoeken naar nieuwe prospects...",
+    "found": "{{count}} nieuwe prospect(en) gevonden."
+  }
+}

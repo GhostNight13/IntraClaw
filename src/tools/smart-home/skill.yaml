@@ -1,0 +1,28 @@
+id: smart-home
+name: Contrôle Maison Intelligente
+version: 1.0.0
+triggers:
+  - "allume"
+  - "éteins"
+  - "lumière"
+  - "chauffage"
+  - "volets"
+  - "température"
+  - "thermostat"
+  - "turn on"
+  - "turn off"
+  - "smart home"
+steps:
+  - action: "get_ha_states"
+    description: "Récupère l'état actuel des appareils"
+  - action: "parse_intent"
+    description: "Détermine quelle entité et quelle action"
+  - action: "call_ha_service"
+    description: "Exécute l'action sur Home Assistant"
+  - action: "confirm"
+    description: "Confirme l'action effectuée"
+examples:
+  - "Allume les lumières du salon"
+  - "Mets la température à 21 degrés"
+  - "Ferme les volets de la chambre"
+  - "Éteins tout avant que je dorme"

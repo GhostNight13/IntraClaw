@@ -1,0 +1,6 @@
+{
+  "not_found": "未找到所请求的资源。",
+  "unauthorized": "您无权执行此操作。",
+  "server_error": "发生内部服务器错误，请稍后重试。",
+  "invalid_input": "提供的输入无效，请检查后重试。"
+}

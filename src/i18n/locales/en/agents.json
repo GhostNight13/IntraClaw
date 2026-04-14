@@ -1,0 +1,14 @@
+{
+  "morning_brief": {
+    "greeting": "Good morning! Here is your daily summary.",
+    "status_section": "System Status",
+    "priorities_section": "Today's Priorities",
+    "opportunities_section": "New Opportunities",
+    "budget_section": "Budget Overview",
+    "be_positive": "Have a productive day!"
+  },
+  "prospecting": {
+    "looking_for": "Searching for new prospects...",
+    "found": "Found {{count}} new prospect(s)."
+  }
+}

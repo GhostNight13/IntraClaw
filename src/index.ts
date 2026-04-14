@@ -4,6 +4,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 import { logger } from './utils/logger';
+import { initI18n } from './i18n';
 import { loadMemory } from './memory/core';
 import { rateLimiter } from './utils/rate-limiter';
 import { costTracker } from './utils/cost-tracker';
@@ -12,9 +13,17 @@ import { startServer } from './server';
 import { startAutonomousLoop, stopAutonomousLoop } from './loop/autonomous-loop';
 import { initMCPServers, closeMCPServers } from './mcp/mcp-client';
 import { initVectorMemory } from './memory/vector-memory';
+import { initAllChannels } from './channels/init-channels';
+import { getConversationHistory, appendToHistory } from './channels/session-store';
+import { executeUniversalTask } from './executor/universal-executor';
+import { initCalendar } from './tools/calendar';
+import { initHomeAssistant } from './tools/smart-home';
 
 async function main(): Promise<void> {
   logger.info('Main', '=== IntraClaw starting (Autonomous Mode) ===');
+
+  await initI18n();
+  logger.info('Main', 'i18n ready (10 languages)');
 
   const memory = loadMemory();
   logger.info('Main', `Memory ready: ${memory.length} files loaded`);
@@ -27,7 +36,42 @@ async function main(): Promise<void> {
   initTelegram();
   await initMCPServers();
   await initVectorMemory();
+  initCalendar();
+  await initHomeAssistant();
   startServer();
+
+  // ── Universal Channels Gateway ────────────────────────────────────────────
+  await initAllChannels(async (msg, respond) => {
+    try {
+      await respond('⏳ Traitement en cours...');
+
+      const history = getConversationHistory(msg.channelId, msg.senderId, 8);
+
+      let enrichedRequest = msg.content;
+      if (history.length > 0) {
+        const histCtx = history
+          .map(h => `${h.role === 'user' ? '👤' : '🤖'}: ${h.content}`)
+          .join('\n');
+        enrichedRequest = `[Contexte précédent]\n${histCtx}\n\n[Nouveau message]\n${msg.content}`;
+      }
+
+      const result = await executeUniversalTask(enrichedRequest);
+
+      const responseText = result.finalOutput || '✅ Tâche complétée.';
+
+      appendToHistory(msg.channelId, msg.senderId, {
+        role: 'assistant',
+        content: responseText,
+      });
+
+      await respond(responseText);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      await respond(`❌ Erreur : ${message}`);
+    }
+  });
+
+  logger.info('Main', 'Universal channels gateway ready');
 
   await startAutonomousLoop();
 

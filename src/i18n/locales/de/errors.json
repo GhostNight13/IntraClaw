@@ -1,0 +1,6 @@
+{
+  "not_found": "Ressource nicht gefunden.",
+  "unauthorized": "Sie sind nicht berechtigt, diese Aktion durchzuführen.",
+  "server_error": "Ein interner Serverfehler ist aufgetreten. Bitte versuchen Sie es später erneut.",
+  "invalid_input": "Die angegebene Eingabe ist ungültig. Bitte überprüfen und erneut versuchen."
+}

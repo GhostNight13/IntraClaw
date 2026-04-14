@@ -1,0 +1,14 @@
+{
+  "morning_brief": {
+    "greeting": "早上好！这是您的每日摘要。",
+    "status_section": "系统状态",
+    "priorities_section": "今日优先事项",
+    "opportunities_section": "新机会",
+    "budget_section": "预算概览",
+    "be_positive": "祝您今天工作高效！"
+  },
+  "prospecting": {
+    "looking_for": "正在搜索新潜在客户...",
+    "found": "找到 {{count}} 位新潜在客户。"
+  }
+}

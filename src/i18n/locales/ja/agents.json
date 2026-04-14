@@ -1,0 +1,14 @@
+{
+  "morning_brief": {
+    "greeting": "おはようございます！本日のサマリーをお届けします。",
+    "status_section": "システム状態",
+    "priorities_section": "本日の優先事項",
+    "opportunities_section": "新しい機会",
+    "budget_section": "予算概要",
+    "be_positive": "充実した一日をお過ごしください！"
+  },
+  "prospecting": {
+    "looking_for": "新規見込み客を検索中...",
+    "found": "新規見込み客を {{count}} 件見つけました。"
+  }
+}
