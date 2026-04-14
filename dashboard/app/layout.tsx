@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { Sidebar } from '@/components/Sidebar';
+import { MobileNav } from '@/components/MobileNav';
+import { PWAInstall } from '@/components/PWAInstall';
 
 const inter = Inter({
   variable: '--font-inter',
@@ -23,11 +25,33 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" className={`${inter.variable} ${jetbrainsMono.variable} h-full`}>
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#0a0a0a" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('/sw.js');
+    });
+  }
+`,
+          }}
+        />
+      </head>
       <body className="h-full flex" style={{ background: 'var(--bg-base)', color: 'var(--text-primary)' }}>
         <Sidebar />
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto pb-16 md:pb-0">
           {children}
         </main>
+        <MobileNav />
+        <PWAInstall />
       </body>
     </html>
   );

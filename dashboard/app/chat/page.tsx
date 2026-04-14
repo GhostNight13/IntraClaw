@@ -255,7 +255,7 @@ export default function ChatPage() {
       </div>
 
       {/* Input bar */}
-      <div className="shrink-0 px-6 py-4 border-t" style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}>
+      <div className="shrink-0 px-6 py-4 border-t mb-16 md:mb-0" style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}>
         <div className="flex items-end gap-3 rounded-xl border px-4 py-3 transition-colors"
           style={{ background: 'var(--bg-base)', borderColor: 'var(--border)' }}
           onFocusCapture={e => (e.currentTarget.style.borderColor = 'var(--accent-blue)')}
