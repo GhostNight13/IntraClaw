@@ -50,6 +50,7 @@
     "matrix-js-sdk": "^41.3.0",
     "node-cron": "^4.2.1",
     "ora": "^5.4.1",
+    "otplib": "^11.0.1",
     "pdf-lib": "^1.17.1",
     "playwright": "^1.59.1",
     "pptxgenjs": "^4.0.1",
