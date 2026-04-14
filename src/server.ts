@@ -36,6 +36,7 @@ import { generateEmailDigest, formatDigestForTelegram, getRules, addRule, delete
 import { authRouter } from './auth/routes';
 import { marketplaceRouter } from './marketplace';
 import { pluginsRouter } from './plugins';
+import { workflowsRouter } from './workflows';
 import { setLanguage, getCurrentLanguage } from './i18n';
 import { updateUser, findUserById } from './users/user-store';
 import { initCalendar, listAllEvents, createCalendarEvent, deleteCalendarEvent, findFreeSlots, getTodaysAgenda, isCalendarAvailable } from './tools/calendar';
@@ -96,6 +97,9 @@ app.use('/api/marketplace', marketplaceRouter);
 
 // ─── Plugin routes ────────────────────────────────────────────────────────────
 app.use('/api/plugins', pluginsRouter);
+
+// ─── Workflow routes ──────────────────────────────────────────────────────────
+app.use('/api/workflows', workflowsRouter);
 
 // ─── GET /api/status ──────────────────────────────────────────────────────────
 

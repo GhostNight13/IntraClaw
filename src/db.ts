@@ -77,6 +77,33 @@ function migrate(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_msk_slug      ON marketplace_skills(slug);
     CREATE INDEX IF NOT EXISTS idx_msk_rating    ON marketplace_skills(avg_rating DESC);
     CREATE INDEX IF NOT EXISTS idx_msk_downloads ON marketplace_skills(downloads DESC);
+
+    CREATE TABLE IF NOT EXISTS workflows (
+      id          TEXT    PRIMARY KEY,
+      user_id     TEXT    NOT NULL DEFAULT 'default',
+      name        TEXT    NOT NULL,
+      description TEXT,
+      nodes       TEXT    NOT NULL DEFAULT '[]',
+      enabled     INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      last_run_at TEXT,
+      run_count   INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS workflow_runs (
+      id               TEXT PRIMARY KEY,
+      workflow_id      TEXT NOT NULL,
+      started_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      finished_at      TEXT,
+      status           TEXT NOT NULL CHECK(status IN ('running','completed','failed')),
+      final_variables  TEXT NOT NULL DEFAULT '{}',
+      error            TEXT,
+      FOREIGN KEY(workflow_id) REFERENCES workflows(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_workflows_user    ON workflows(user_id);
+    CREATE INDEX IF NOT EXISTS idx_workflows_enabled ON workflows(enabled);
+    CREATE INDEX IF NOT EXISTS idx_runs_workflow     ON workflow_runs(workflow_id, started_at DESC);
   `);
 }
 
