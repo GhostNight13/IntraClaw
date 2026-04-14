@@ -39,6 +39,7 @@ import { authRouter } from './auth/routes';
 import { marketplaceRouter } from './marketplace';
 import { pluginsRouter } from './plugins';
 import { workflowsRouter } from './workflows';
+import { webhookRouter, apiWebhookRouter } from './webhooks/router';
 import { setLanguage, getCurrentLanguage } from './i18n';
 import { updateUser, findUserById } from './users/user-store';
 import { initCalendar, listAllEvents, createCalendarEvent, deleteCalendarEvent, findFreeSlots, getTodaysAgenda, isCalendarAvailable } from './tools/calendar';
@@ -107,6 +108,10 @@ app.use('/api/plugins', pluginsRouter);
 
 // ─── Workflow routes ──────────────────────────────────────────────────────────
 app.use('/api/workflows', workflowsRouter);
+
+// ─── Webhook routes (raw body for HMAC) ──────────────────────────────────────
+app.use('/webhooks', webhookRouter);
+app.use('/api/webhooks', apiWebhookRouter);
 
 // ─── GET /api/status ──────────────────────────────────────────────────────────
 
