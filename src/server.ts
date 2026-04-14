@@ -51,6 +51,9 @@ import type { VisionMediaType } from './tools/vision/types';
 import { getBudgetStatus, getBudgetReport, updateBudget } from './utils/budget-manager';
 import { sseManager } from './streaming/sse-manager';
 import { getThoughts, getRecentThoughts } from './reasoning/thought-logger';
+import { readFile as coderReadFile, writeFile as coderWriteFile, previewWrite } from './tools/coder/code-writer';
+import { runCode } from './tools/coder/code-runner';
+import { listSnapshots, rollbackToSnapshot } from './tools/coder/rollback';
 
 const PORT = parseInt(process.env.API_PORT ?? '3001', 10);
 let schedulerPaused = false;
@@ -1027,6 +1030,57 @@ app.get('/api/reasoning/recent', (_req: Request, res: Response) => {
 app.get('/api/reasoning/:taskId', (req: Request, res: Response) => {
   const taskId = Array.isArray(req.params.taskId) ? req.params.taskId[0] : req.params.taskId;
   res.json(getThoughts(taskId));
+});
+
+// ─── Agentic Coder endpoints ──────────────────────────────────────────────────
+
+app.post('/api/code/execute', async (req: Request, res: Response) => {
+  const { code, language } = req.body as { code?: string; language?: 'javascript' | 'typescript' | 'python' | 'bash' };
+  if (!code) { res.status(400).json({ error: 'code required' }); return; }
+  try {
+    const result = await runCode(code, language ?? 'javascript');
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Execution failed' });
+  }
+});
+
+app.post('/api/code/diff', (req: Request, res: Response) => {
+  const { path: filePath, content } = req.body as { path?: string; content?: string };
+  if (!filePath || content === undefined) { res.status(400).json({ error: 'path and content required' }); return; }
+  try {
+    res.json(previewWrite(filePath, content));
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Diff failed' });
+  }
+});
+
+app.post('/api/code/write', (req: Request, res: Response) => {
+  const { path: filePath, content } = req.body as { path?: string; content?: string };
+  if (!filePath || content === undefined) { res.status(400).json({ error: 'path and content required' }); return; }
+  try {
+    const result = coderWriteFile(filePath, content);
+    res.json({ ok: true, snapshot: result.snapshot });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Write failed' });
+  }
+});
+
+app.get('/api/code/snapshots', (req: Request, res: Response) => {
+  const filePath = req.query.path as string;
+  if (!filePath) { res.status(400).json({ error: 'path required' }); return; }
+  res.json(listSnapshots(filePath));
+});
+
+app.post('/api/code/rollback', (req: Request, res: Response) => {
+  const { snapshotId } = req.body as { snapshotId?: string };
+  if (!snapshotId) { res.status(400).json({ error: 'snapshotId required' }); return; }
+  try {
+    rollbackToSnapshot(snapshotId);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Rollback failed' });
+  }
 });
 
 // ─── Health check ─────────────────────────────────────────────────────────────

@@ -171,6 +171,14 @@ function migrate(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_webhook_fire ON webhook_fire_log(webhook_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS file_snapshots (
+      id          TEXT PRIMARY KEY,
+      file_path   TEXT NOT NULL,
+      content     TEXT NOT NULL,
+      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_snapshot_path ON file_snapshots(file_path, created_at DESC);
   `);
 }
 
