@@ -11,6 +11,13 @@ import {
 } from '../users/user-store';
 import { setup2FA, verify2FASetup, disable2FA, get2FAStatus } from './totp';
 import { handleOAuthCallback, getLinkedAccounts, unlinkOAuthAccount, OAuthProvider } from './oauth';
+import {
+  createSP, createIdP, fetchIdpMetadata, parseAssertion, generateSPMetadata,
+} from './saml';
+import {
+  createSAMLConfig, getSAMLConfig, listSAMLConfigs, deleteSAMLConfig,
+} from './saml-store';
+import { createOAuthUser } from '../users/user-store';
 
 const router = Router();
 
@@ -290,6 +297,166 @@ router.get('/oauth/microsoft/callback', async (req: Request, res: Response): Pro
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'OAuth failed' });
   }
+});
+
+// ─── SAML 2.0 Routes (Phase R2) ───────────────────────────────────────────────
+
+// GET /auth/saml/metadata  — returns SP metadata XML
+router.get('/saml/metadata', (_req: Request, res: Response): void => {
+  try {
+    const sp = createSP();
+    const xml = generateSPMetadata(sp);
+    res.set('Content-Type', 'application/xml').send(xml);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Could not generate SP metadata' });
+  }
+});
+
+// GET /auth/saml/login?tenant=xxx  — initiate SSO, redirect to IdP
+router.get('/saml/login', async (req: Request, res: Response): Promise<void> => {
+  const tenant = (req.query.tenant as string | undefined)?.trim();
+  if (!tenant) {
+    res.status(400).json({ error: 'tenant query parameter is required' });
+    return;
+  }
+
+  try {
+    const config = getSAMLConfig(tenant);
+    if (!config) {
+      res.status(404).json({ error: `No SAML config found for tenant: ${tenant}` });
+      return;
+    }
+
+    // Resolve IdP metadata XML
+    let metadataXml = config.idpMetadataXml;
+    if (!metadataXml && config.idpMetadataUrl) {
+      metadataXml = await fetchIdpMetadata(config.idpMetadataUrl);
+    }
+    if (!metadataXml) {
+      res.status(500).json({ error: 'SAML config has no metadata XML or URL' });
+      return;
+    }
+
+    const sp = createSP();
+    const idp = createIdP(metadataXml);
+
+    // samlify SP createLoginRequest returns { id, context } for redirect binding
+    const spInstance = sp as {
+      createLoginRequest: (
+        idp: unknown,
+        binding: string
+      ) => { id: string; context: string };
+    };
+
+    const { context: loginUrl } = spInstance.createLoginRequest(idp, 'redirect');
+    res.redirect(loginUrl);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'SAML login initiation failed' });
+  }
+});
+
+// POST /auth/saml/callback  — ACS endpoint
+router.post('/saml/callback', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const body = req.body as Record<string, string>;
+
+    // Detect tenant from RelayState or SAMLResponse audience — we try all configs
+    const configs = listSAMLConfigs();
+    if (configs.length === 0) {
+      res.status(503).json({ error: 'No SAML configurations registered' });
+      return;
+    }
+
+    // If RelayState contains a tenant hint use it, otherwise iterate
+    const tenantHint = (body.RelayState ?? '').split(':').find((p) => p.length > 0);
+    const orderedConfigs = tenantHint
+      ? [getSAMLConfig(tenantHint), ...configs].filter(Boolean)
+      : configs;
+
+    let lastError: Error | null = null;
+    for (const config of orderedConfigs) {
+      if (!config) continue;
+      try {
+        let metadataXml = config.idpMetadataXml;
+        if (!metadataXml && config.idpMetadataUrl) {
+          metadataXml = await fetchIdpMetadata(config.idpMetadataUrl);
+        }
+        if (!metadataXml) continue;
+
+        const sp = createSP();
+        const idp = createIdP(metadataXml);
+        const { email, nameId, attributes } = await parseAssertion(sp, idp, body);
+
+        // Find or create user
+        const name =
+          attributes['displayName'] ??
+          attributes['http://schemas.microsoft.com/identity/claims/displayname'] ??
+          attributes['name'] ??
+          email.split('@')[0];
+
+        const user = await createOAuthUser({ email, name });
+
+        const jwtToken = signToken({
+          userId: user.id,
+          email: user.email,
+          role: user.role,
+          plan: user.plan,
+        });
+
+        const dashboardUrl = process.env.DASHBOARD_URL ?? 'http://localhost:3000';
+        void nameId; // used for future session / logout support
+        res.redirect(`${dashboardUrl}?token=${jwtToken}`);
+        return;
+      } catch (e) {
+        lastError = e instanceof Error ? e : new Error(String(e));
+      }
+    }
+
+    res.status(401).json({ error: lastError?.message ?? 'SAML assertion validation failed' });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'SAML callback error' });
+  }
+});
+
+// ─── SAML Config Management (admin) ─────────────────────────────────────────
+
+// GET /api/saml/configs
+router.get('/saml/configs', authenticate, (_req: Request, res: Response): void => {
+  res.json(listSAMLConfigs());
+});
+
+// POST /api/saml/configs
+router.post('/saml/configs', authenticate, (req: Request, res: Response): void => {
+  const { tenantId, idpEntityId, idpMetadataUrl, idpMetadataXml } = req.body as {
+    tenantId?: string;
+    idpEntityId?: string;
+    idpMetadataUrl?: string;
+    idpMetadataXml?: string;
+  };
+
+  if (!tenantId || !idpEntityId) {
+    res.status(400).json({ error: 'tenantId and idpEntityId are required' });
+    return;
+  }
+  if (!idpMetadataUrl && !idpMetadataXml) {
+    res.status(400).json({ error: 'Either idpMetadataUrl or idpMetadataXml is required' });
+    return;
+  }
+
+  try {
+    const config = createSAMLConfig(tenantId, idpEntityId, idpMetadataUrl, idpMetadataXml);
+    res.status(201).json(config);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(msg.includes('UNIQUE') ? 409 : 500).json({ error: msg });
+  }
+});
+
+// DELETE /api/saml/configs/:id
+router.delete('/saml/configs/:id', authenticate, (req: Request, res: Response): void => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  deleteSAMLConfig(id);
+  res.json({ ok: true });
 });
 
 export { router as authRouter };

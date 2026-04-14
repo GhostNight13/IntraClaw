@@ -279,6 +279,27 @@ function migrate(db: Database.Database): void {
       created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
     CREATE INDEX IF NOT EXISTS idx_meetings_status ON meetings(status, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id                TEXT    NOT NULL UNIQUE,
+      stripe_customer_id     TEXT,
+      stripe_subscription_id TEXT,
+      plan                   TEXT    NOT NULL DEFAULT 'free' CHECK(plan IN ('free','pro','team')),
+      status                 TEXT    NOT NULL DEFAULT 'inactive' CHECK(status IN ('active','canceled','past_due','trialing','inactive')),
+      current_period_end     TEXT,
+      created_at             TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_sub_customer ON subscriptions(stripe_customer_id);
+
+    CREATE TABLE IF NOT EXISTS saml_configs (
+      id               TEXT PRIMARY KEY,
+      tenant_id        TEXT NOT NULL UNIQUE,
+      idp_metadata_url TEXT,
+      idp_metadata_xml TEXT,
+      idp_entity_id    TEXT NOT NULL,
+      created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
   `);
 }
 
