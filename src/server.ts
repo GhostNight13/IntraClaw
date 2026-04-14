@@ -45,6 +45,11 @@ import { initCalendar, listAllEvents, createCalendarEvent, deleteCalendarEvent, 
 import { isConnected as isHAConnected, getStates as getHAStates } from './tools/smart-home/ha-client';
 import { listDevices, controlDevice } from './tools/smart-home/devices';
 import { generateImageWithFallback, generateVideo, textToSpeech, listMedia } from './tools/media';
+import { analyzeImage } from './tools/vision/vision-analyzer';
+import type { VisionMediaType } from './tools/vision/types';
+import { getBudgetStatus, getBudgetReport, updateBudget } from './utils/budget-manager';
+import { sseManager } from './streaming/sse-manager';
+import { getThoughts, getRecentThoughts } from './reasoning/thought-logger';
 
 const PORT = parseInt(process.env.API_PORT ?? '3001', 10);
 let schedulerPaused = false;
@@ -958,6 +963,65 @@ app.post('/api/i18n/language', (req: Request, res: Response) => {
   }
 
   res.json({ ok: true, locale, current: getCurrentLanguage() });
+});
+
+// ─── Budget endpoints ─────────────────────────────────────────────────────────
+
+app.get('/api/budget', (req: Request, res: Response) => {
+  const userId = (req as Request & { userId?: string }).userId ?? 'default';
+  res.json(getBudgetStatus(userId));
+});
+
+app.patch('/api/budget', (req: Request, res: Response) => {
+  const userId = (req as Request & { userId?: string }).userId ?? 'default';
+  const { dailyEur, monthlyEur, alertThreshold } = req.body as { dailyEur?: number; monthlyEur?: number; alertThreshold?: number };
+  updateBudget(userId, dailyEur ?? 5, monthlyEur ?? 50, alertThreshold ?? 0.8);
+  res.json(getBudgetStatus(userId));
+});
+
+app.get('/api/budget/stats', (_req: Request, res: Response) => {
+  res.json(getBudgetReport());
+});
+
+// ─── Vision endpoints ─────────────────────────────────────────────────────────
+
+app.post('/api/vision/analyze', async (req: Request, res: Response) => {
+  const { image, mediaType, prompt } = req.body as { image?: string; mediaType?: string; prompt?: string };
+  if (!image) { res.status(400).json({ error: 'image (base64) required' }); return; }
+  if (!prompt) { res.status(400).json({ error: 'prompt required' }); return; }
+  try {
+    const result = await analyzeImage(
+      image,
+      (mediaType ?? 'image/png') as VisionMediaType,
+      prompt
+    );
+    res.json(result);
+  } catch (err) {
+    logger.error('Server', 'Vision analysis failed', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Vision failed' });
+  }
+});
+
+// ─── SSE / Streaming endpoints ────────────────────────────────────────────────
+
+app.get('/api/stream/thoughts', (req: Request, res: Response) => {
+  const taskId = (req.query.taskId as string) ?? 'global';
+  const clientId = `sse-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  sseManager.addClient(clientId, res, taskId);
+  // Send existing thoughts for this task immediately
+  const existing = getThoughts(taskId);
+  for (const step of existing) {
+    res.write(`data: ${JSON.stringify(step)}\n\n`);
+  }
+});
+
+app.get('/api/reasoning/recent', (_req: Request, res: Response) => {
+  res.json(getRecentThoughts(100));
+});
+
+app.get('/api/reasoning/:taskId', (req: Request, res: Response) => {
+  const taskId = Array.isArray(req.params.taskId) ? req.params.taskId[0] : req.params.taskId;
+  res.json(getThoughts(taskId));
 });
 
 // ─── Health check ─────────────────────────────────────────────────────────────

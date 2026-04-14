@@ -104,6 +104,30 @@ function migrate(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_workflows_user    ON workflows(user_id);
     CREATE INDEX IF NOT EXISTS idx_workflows_enabled ON workflows(enabled);
     CREATE INDEX IF NOT EXISTS idx_runs_workflow     ON workflow_runs(workflow_id, started_at DESC);
+
+    CREATE TABLE IF NOT EXISTS user_budgets (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id          TEXT    NOT NULL UNIQUE,
+      daily_eur        REAL    NOT NULL DEFAULT 5.0,
+      monthly_eur      REAL    NOT NULL DEFAULT 50.0,
+      current_daily    REAL    NOT NULL DEFAULT 0,
+      current_monthly  REAL    NOT NULL DEFAULT 0,
+      alert_threshold  REAL    NOT NULL DEFAULT 0.8,
+      reset_at         TEXT    NOT NULL DEFAULT (datetime('now', '+1 day'))
+    );
+
+    CREATE TABLE IF NOT EXISTS thought_log (
+      id          TEXT    PRIMARY KEY,
+      task_id     TEXT    NOT NULL,
+      type        TEXT    NOT NULL,
+      content     TEXT    NOT NULL,
+      step_index  INTEGER NOT NULL DEFAULT 0,
+      metadata    TEXT    NOT NULL DEFAULT '{}',
+      created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_thought_task   ON thought_log(task_id, step_index);
+    CREATE INDEX IF NOT EXISTS idx_thought_recent ON thought_log(created_at DESC);
   `);
 }
 
