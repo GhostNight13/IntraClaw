@@ -59,6 +59,11 @@ import { extractSubgraph, getGraphStats } from './memory/graph/graph-query';
 import { getAllTools, getToolsByCategory } from './tools/tool-registry';
 import { getRelevantTools } from './tools/tool-retriever';
 import { createExperiment, runBothVariants, concludeExperiment, listExperiments, getExperimentResults } from './experiments/ab-testing';
+import { runRedTeam, getRedTeamResults } from './eval/red-team';
+import { getAuditLog } from './compliance/audit-log';
+import { exportUserData, deleteUserData } from './compliance/gdpr';
+import { recordConsent, getConsents } from './compliance/consent';
+import { checkForUpdates, applyUpdate } from './updater/ota-updater';
 
 const PORT = parseInt(process.env.API_PORT ?? '3001', 10);
 let schedulerPaused = false;
@@ -1205,6 +1210,64 @@ app.post('/api/experiments/:id/conclude', (req: Request, res: Response) => {
 
 app.get('/api/experiments/:id/results', (req: Request, res: Response) => {
   res.json(getExperimentResults(String(req.params.id)));
+});
+
+// ─── Red Team endpoints ───────────────────────────────────────────────────────
+app.post('/api/eval/redteam/run', async (_req: Request, res: Response) => {
+  try {
+    const results = await runRedTeam();
+    const flagged = results.filter(r => r.flagged).length;
+    res.json({ results, summary: { total: results.length, flagged, safe: results.length - flagged } });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Red team failed' });
+  }
+});
+
+app.get('/api/eval/redteam/results', (_req: Request, res: Response) => {
+  res.json(getRedTeamResults());
+});
+
+// ─── Compliance endpoints (SOC2/GDPR) ────────────────────────────────────────
+app.get('/api/compliance/audit-log', (_req: Request, res: Response) => {
+  res.json(getAuditLog(500));
+});
+
+app.get('/api/compliance/export/:userId', (req: Request, res: Response) => {
+  const userId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
+  res.json(exportUserData(userId));
+});
+
+app.delete('/api/compliance/data/:userId', (req: Request, res: Response) => {
+  const userId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
+  res.json(deleteUserData(userId));
+});
+
+app.get('/api/compliance/consent/:userId', (req: Request, res: Response) => {
+  const userId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
+  res.json(getConsents(userId));
+});
+
+app.post('/api/compliance/consent/:userId', (req: Request, res: Response) => {
+  const userId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
+  const { consentType, granted } = req.body as { consentType?: string; granted?: boolean };
+  if (!consentType) { res.status(400).json({ error: 'consentType required' }); return; }
+  recordConsent(userId, consentType as import('./compliance/consent').ConsentType, granted ?? true, req.ip);
+  res.json({ ok: true });
+});
+
+// ─── OTA Update endpoints ─────────────────────────────────────────────────────
+app.get('/api/updates/check', (_req: Request, res: Response) => {
+  res.json(checkForUpdates());
+});
+
+app.post('/api/updates/apply', (_req: Request, res: Response) => {
+  const result = applyUpdate();
+  res.json(result);
+});
+
+app.get('/api/updates/changelog', (_req: Request, res: Response) => {
+  const info = checkForUpdates();
+  res.json({ changelog: info.changelog, latestLog: info.latestLog });
 });
 
 // ─── Health check ─────────────────────────────────────────────────────────────
