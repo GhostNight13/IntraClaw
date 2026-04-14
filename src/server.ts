@@ -58,6 +58,7 @@ import { createEntity, updateEntity, deleteEntity, listEntities, searchEntities,
 import { extractSubgraph, getGraphStats } from './memory/graph/graph-query';
 import { getAllTools, getToolsByCategory } from './tools/tool-registry';
 import { getRelevantTools } from './tools/tool-retriever';
+import { createExperiment, runBothVariants, concludeExperiment, listExperiments, getExperimentResults } from './experiments/ab-testing';
 
 const PORT = parseInt(process.env.API_PORT ?? '3001', 10);
 let schedulerPaused = false;
@@ -1169,6 +1170,41 @@ app.get('/api/tools/search', async (req: Request, res: Response) => {
   if (category && !q) { res.json(getToolsByCategory(category)); return; }
   if (!q) { res.json(getAllTools()); return; }
   res.json(await getRelevantTools(q, 10));
+});
+
+// ─── A/B Experiment endpoints ─────────────────────────────────────────────────
+
+app.get('/api/experiments', (req: Request, res: Response) => {
+  const activeOnly = req.query.active === 'true';
+  res.json(listExperiments(activeOnly));
+});
+
+app.post('/api/experiments', (req: Request, res: Response) => {
+  const { name, promptA, promptB, taskType, metric } = req.body as { name?: string; promptA?: string; promptB?: string; taskType?: string; metric?: string };
+  if (!name || !promptA || !promptB) { res.status(400).json({ error: 'name, promptA, promptB required' }); return; }
+  const exp = createExperiment(name, promptA, promptB, { taskType, metric: metric as import('./experiments/ab-testing').ABMetric });
+  res.status(201).json(exp);
+});
+
+app.post('/api/experiments/:id/run', async (req: Request, res: Response) => {
+  const { context } = req.body as { context?: string };
+  try {
+    res.json(await runBothVariants(String(req.params.id), context));
+  } catch (err) {
+    res.status(404).json({ error: err instanceof Error ? err.message : 'Run failed' });
+  }
+});
+
+app.post('/api/experiments/:id/conclude', (req: Request, res: Response) => {
+  try {
+    res.json(concludeExperiment(String(req.params.id)));
+  } catch (err) {
+    res.status(404).json({ error: err instanceof Error ? err.message : 'Conclude failed' });
+  }
+});
+
+app.get('/api/experiments/:id/results', (req: Request, res: Response) => {
+  res.json(getExperimentResults(String(req.params.id)));
 });
 
 // ─── Health check ─────────────────────────────────────────────────────────────

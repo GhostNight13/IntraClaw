@@ -202,6 +202,68 @@ function migrate(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_graph_entity_type ON graph_entities(type);
     CREATE INDEX IF NOT EXISTS idx_graph_rel_from    ON graph_relationships(from_id);
     CREATE INDEX IF NOT EXISTS idx_graph_rel_to      ON graph_relationships(to_id);
+
+    CREATE TABLE IF NOT EXISTS ab_experiments (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      task_type   TEXT,
+      prompt_a    TEXT NOT NULL,
+      prompt_b    TEXT NOT NULL,
+      metric      TEXT NOT NULL DEFAULT 'response_length',
+      runs_a      INTEGER NOT NULL DEFAULT 0,
+      runs_b      INTEGER NOT NULL DEFAULT 0,
+      score_a     REAL NOT NULL DEFAULT 0,
+      score_b     REAL NOT NULL DEFAULT 0,
+      winner      TEXT,
+      active      INTEGER NOT NULL DEFAULT 1,
+      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS ab_results (
+      id            TEXT PRIMARY KEY,
+      experiment_id TEXT NOT NULL REFERENCES ab_experiments(id) ON DELETE CASCADE,
+      variant       TEXT NOT NULL CHECK(variant IN ('a','b')),
+      prompt        TEXT NOT NULL,
+      response      TEXT NOT NULL,
+      score         REAL NOT NULL,
+      latency_ms    INTEGER NOT NULL,
+      created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_ab_exp ON ab_results(experiment_id, variant);
+
+    CREATE TABLE IF NOT EXISTS red_team_results (
+      id          TEXT PRIMARY KEY,
+      attack_type TEXT NOT NULL,
+      prompt      TEXT NOT NULL,
+      response    TEXT NOT NULL,
+      flagged     INTEGER NOT NULL DEFAULT 0,
+      reason      TEXT NOT NULL,
+      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_redteam_type ON red_team_results(attack_type, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id          TEXT PRIMARY KEY,
+      user_id     TEXT,
+      action      TEXT NOT NULL,
+      resource    TEXT,
+      resource_id TEXT,
+      ip_address  TEXT,
+      metadata    TEXT NOT NULL DEFAULT '{}',
+      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS consent_records (
+      id           TEXT PRIMARY KEY,
+      user_id      TEXT NOT NULL,
+      consent_type TEXT NOT NULL,
+      granted      INTEGER NOT NULL DEFAULT 0,
+      ip_address   TEXT,
+      created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_consent_user ON consent_records(user_id, consent_type, created_at DESC);
   `);
 }
 
