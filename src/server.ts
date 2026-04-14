@@ -1255,6 +1255,92 @@ app.post('/api/compliance/consent/:userId', (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ─── Meeting Bot endpoints ────────────────────────────────────────────────────
+import {
+  createMeeting as createMeetingRecord,
+  getMeeting as getMeetingRecord,
+  listMeetings as listMeetingRecords,
+  updateMeeting as updateMeetingRecord,
+  deleteMeeting as deleteMeetingRecord,
+} from './tools/meetings/meeting-store';
+import { processTranscript, getMeetingStats } from './tools/meetings/meeting-bot';
+
+// GET /api/meetings
+app.get('/api/meetings', (_req: Request, res: Response) => {
+  try {
+    res.json(listMeetingRecords(100));
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// POST /api/meetings — { url, title }
+app.post('/api/meetings', (req: Request, res: Response) => {
+  const { url, title } = req.body as { url?: string; title?: string };
+  if (!url?.trim()) { res.status(400).json({ error: 'url required' }); return; }
+  if (!title?.trim()) { res.status(400).json({ error: 'title required' }); return; }
+  try {
+    const meeting = createMeetingRecord(url.trim(), title.trim());
+    res.status(201).json(meeting);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// GET /api/meetings/stats
+app.get('/api/meetings/stats', (_req: Request, res: Response) => {
+  try {
+    res.json(getMeetingStats());
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// GET /api/meetings/:id
+app.get('/api/meetings/:id', (req: Request, res: Response) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const meeting = getMeetingRecord(id);
+  if (!meeting) { res.status(404).json({ error: 'Meeting not found' }); return; }
+  res.json(meeting);
+});
+
+// DELETE /api/meetings/:id
+app.delete('/api/meetings/:id', (req: Request, res: Response) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  deleteMeetingRecord(id);
+  res.json({ ok: true });
+});
+
+// POST /api/meetings/:id/transcript — { transcript }
+app.post('/api/meetings/:id/transcript', async (req: Request, res: Response) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const { transcript } = req.body as { transcript?: string };
+  if (!transcript?.trim()) { res.status(400).json({ error: 'transcript required' }); return; }
+  try {
+    const meeting = await processTranscript(id, transcript.trim());
+    res.json(meeting);
+  } catch (err) {
+    res.status(err instanceof Error && err.message.includes('not found') ? 404 : 500)
+       .json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// GET /api/meetings/:id/transcript
+app.get('/api/meetings/:id/transcript', (req: Request, res: Response) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const meeting = getMeetingRecord(id);
+  if (!meeting) { res.status(404).json({ error: 'Meeting not found' }); return; }
+  res.json({ transcript: meeting.transcript });
+});
+
+// GET /api/meetings/:id/summary
+app.get('/api/meetings/:id/summary', (req: Request, res: Response) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const meeting = getMeetingRecord(id);
+  if (!meeting) { res.status(404).json({ error: 'Meeting not found' }); return; }
+  res.json({ summary: meeting.summary, actionItems: meeting.actionItems, status: meeting.status });
+});
+
 // ─── OTA Update endpoints ─────────────────────────────────────────────────────
 app.get('/api/updates/check', (_req: Request, res: Response) => {
   res.json(checkForUpdates());

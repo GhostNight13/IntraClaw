@@ -264,6 +264,21 @@ function migrate(db: Database.Database): void {
       created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
     CREATE INDEX IF NOT EXISTS idx_consent_user ON consent_records(user_id, consent_type, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS meetings (
+      id           TEXT PRIMARY KEY,
+      url          TEXT NOT NULL,
+      platform     TEXT NOT NULL DEFAULT 'other',
+      title        TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','recording','processing','completed','failed')),
+      started_at   TEXT,
+      ended_at     TEXT,
+      transcript   TEXT,
+      summary      TEXT,
+      action_items TEXT NOT NULL DEFAULT '[]',
+      created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_meetings_status ON meetings(status, created_at DESC);
   `);
 }
 
