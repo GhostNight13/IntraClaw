@@ -104,6 +104,43 @@ export async function createUser(input: {
   return safe;
 }
 
+/**
+ * Create a user from an OAuth provider (no password required).
+ * Returns the full User object (with empty password hash) for token signing.
+ */
+export async function createOAuthUser(input: {
+  email: string;
+  name: string;
+  role?: UserRole;
+  plan?: UserPlan;
+}): Promise<User> {
+  const users = ensureFile();
+
+  const existing = users.find(u => u.email.toLowerCase() === input.email.toLowerCase());
+  if (existing) return existing;
+
+  const now = new Date().toISOString();
+  const user: User = {
+    id:             crypto.randomUUID(),
+    email:          input.email.toLowerCase().trim(),
+    name:           input.name.trim(),
+    password:       '',           // no password for OAuth users
+    role:           input.role ?? 'user',
+    plan:           input.plan ?? 'free',
+    apiKey:         generateApiKey(),
+    locale:         'fr',
+    timezone:       'Europe/Brussels',
+    createdAt:      now,
+    updatedAt:      now,
+    actionsToday:   0,
+    lastActionDate: new Date().toISOString().split('T')[0],
+  };
+
+  users.push(user);
+  saveUsers(users);
+  return user;
+}
+
 export function findUserByEmail(email: string): User | undefined {
   return ensureFile().find(u => u.email === email.toLowerCase().trim());
 }

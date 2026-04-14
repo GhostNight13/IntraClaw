@@ -128,6 +128,49 @@ function migrate(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_thought_task   ON thought_log(task_id, step_index);
     CREATE INDEX IF NOT EXISTS idx_thought_recent ON thought_log(created_at DESC);
+
+    -- 2FA columns on a virtual users table (user-store uses JSON files, so we add a separate 2fa table)
+    CREATE TABLE IF NOT EXISTS user_2fa (
+      user_id        TEXT PRIMARY KEY,
+      totp_secret    TEXT NOT NULL,
+      totp_enabled   INTEGER NOT NULL DEFAULT 0,
+      backup_codes   TEXT NOT NULL DEFAULT '[]',
+      created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS oauth_accounts (
+      id          TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL,
+      provider    TEXT NOT NULL,
+      provider_id TEXT NOT NULL,
+      email       TEXT,
+      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      UNIQUE(provider, provider_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_oauth_user ON oauth_accounts(user_id);
+
+    CREATE TABLE IF NOT EXISTS webhooks (
+      id           TEXT PRIMARY KEY,
+      name         TEXT NOT NULL,
+      secret       TEXT NOT NULL,
+      url_path     TEXT NOT NULL,
+      event_type   TEXT NOT NULL DEFAULT 'agent.task',
+      enabled      INTEGER NOT NULL DEFAULT 1,
+      created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      last_fired_at TEXT,
+      fire_count   INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS webhook_fire_log (
+      id          TEXT PRIMARY KEY,
+      webhook_id  TEXT NOT NULL,
+      status      TEXT NOT NULL CHECK(status IN ('success','error')),
+      error       TEXT,
+      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      FOREIGN KEY(webhook_id) REFERENCES webhooks(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_webhook_fire ON webhook_fire_log(webhook_id, created_at DESC);
   `);
 }
 
