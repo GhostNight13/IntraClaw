@@ -52,7 +52,7 @@ import { getBudgetStatus, getBudgetReport, updateBudget } from './utils/budget-m
 import { sseManager } from './streaming/sse-manager';
 import { getThoughts, getRecentThoughts } from './reasoning/thought-logger';
 import { readFile as coderReadFile, writeFile as coderWriteFile, previewWrite } from './tools/coder/code-writer';
-import { runCode } from './tools/coder/code-runner';
+import { runCode, runNodeCode, runShellCommand } from './tools/coder/code-runner';
 import { listSnapshots, rollbackToSnapshot } from './tools/coder/rollback';
 import { createEntity, updateEntity, deleteEntity, listEntities, searchEntities, createRelationship, deleteRelationship, getNeighbors } from './memory/graph/graph-memory';
 import { extractSubgraph, getGraphStats } from './memory/graph/graph-query';
@@ -1037,40 +1037,54 @@ app.get('/api/reasoning/:taskId', (req: Request, res: Response) => {
 // ─── Agentic Coder endpoints ──────────────────────────────────────────────────
 
 app.post('/api/code/execute', async (req: Request, res: Response) => {
-  const { code, language } = req.body as { code?: string; language?: 'javascript' | 'typescript' | 'python' | 'bash' };
+  const { code, lang, language } = req.body as { code?: string; lang?: string; language?: 'javascript' | 'typescript' | 'python' | 'bash' };
   if (!code) { res.status(400).json({ error: 'code required' }); return; }
   try {
-    const result = await runCode(code, language ?? 'javascript');
+    // Support both `lang` (new spec) and `language` (legacy) params
+    const effectiveLang = lang ?? language ?? 'node';
+    let result;
+    if (effectiveLang === 'shell') {
+      result = await runShellCommand(code);
+    } else if (effectiveLang === 'node' || effectiveLang === 'javascript') {
+      result = await runNodeCode(code);
+    } else {
+      result = await runCode(code, effectiveLang as 'javascript' | 'typescript' | 'python' | 'bash');
+    }
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Execution failed' });
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Execution failed' });
   }
 });
 
 app.post('/api/code/diff', (req: Request, res: Response) => {
-  const { path: filePath, content } = req.body as { path?: string; content?: string };
-  if (!filePath || content === undefined) { res.status(400).json({ error: 'path and content required' }); return; }
+  // Support both new spec (filePath/newContent) and legacy (path/content) params
+  const body = req.body as { filePath?: string; newContent?: string; path?: string; content?: string };
+  const filePath = body.filePath ?? body.path;
+  const newContent = body.newContent ?? body.content;
+  if (!filePath || newContent === undefined) { res.status(400).json({ error: 'filePath and newContent required' }); return; }
   try {
-    res.json(previewWrite(filePath, content));
+    res.json(previewWrite(filePath, newContent));
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Diff failed' });
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Diff failed' });
   }
 });
 
 app.post('/api/code/write', (req: Request, res: Response) => {
-  const { path: filePath, content } = req.body as { path?: string; content?: string };
-  if (!filePath || content === undefined) { res.status(400).json({ error: 'path and content required' }); return; }
+  // Support both new spec (filePath/content) and legacy (path/content) params
+  const body = req.body as { filePath?: string; path?: string; content?: string };
+  const filePath = body.filePath ?? body.path;
+  const { content } = body;
+  if (!filePath || content === undefined) { res.status(400).json({ error: 'filePath and content required' }); return; }
   try {
     const result = coderWriteFile(filePath, content);
-    res.json({ ok: true, snapshot: result.snapshot });
+    res.json({ ok: true, ...result });
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Write failed' });
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Write failed' });
   }
 });
 
 app.get('/api/code/snapshots', (req: Request, res: Response) => {
-  const filePath = req.query.path as string;
-  if (!filePath) { res.status(400).json({ error: 'path required' }); return; }
+  const filePath = req.query.path as string | undefined;
   res.json(listSnapshots(filePath));
 });
 
@@ -1081,7 +1095,7 @@ app.post('/api/code/rollback', (req: Request, res: Response) => {
     rollbackToSnapshot(snapshotId);
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Rollback failed' });
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Rollback failed' });
   }
 });
 

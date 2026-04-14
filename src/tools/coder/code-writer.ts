@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { takeSnapshot } from './rollback';
-import { generateUnifiedDiff } from './diff-preview';
+import { generateDiff } from './diff-preview';
 import type { DiffResult } from './types';
 import { logger } from '../../utils/logger';
 
@@ -24,10 +24,10 @@ export function readFile(filePath: string): string {
 
 export function previewWrite(filePath: string, newContent: string): DiffResult {
   const original = readFile(filePath);
-  return generateUnifiedDiff(original, newContent, path.basename(filePath));
+  return generateDiff(filePath, original, newContent);
 }
 
-export function writeFile(filePath: string, content: string, skipSnapshot = false): { snapshot: string | null } {
+export function writeFile(filePath: string, content: string, snapshotFirst = true): { snapshot: string | null } {
   if (!isSafePath(filePath)) throw new Error(`Path not allowed: ${filePath}`);
 
   // Ensure directory exists
@@ -35,7 +35,7 @@ export function writeFile(filePath: string, content: string, skipSnapshot = fals
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   let snapshotId: string | null = null;
-  if (!skipSnapshot && fs.existsSync(filePath)) {
+  if (snapshotFirst && fs.existsSync(filePath)) {
     const snap = takeSnapshot(filePath);
     snapshotId = snap.id;
   }
@@ -45,10 +45,10 @@ export function writeFile(filePath: string, content: string, skipSnapshot = fals
   return { snapshot: snapshotId };
 }
 
-export function patchFile(filePath: string, patch: string): { snapshot: string | null } {
-  if (!isSafePath(filePath)) throw new Error(`Path not allowed: ${filePath}`);
-  const original = readFile(filePath);
-  const { applyPatch } = require('./diff-preview') as typeof import('./diff-preview');
-  const patched = applyPatch(original, patch);
-  return writeFile(filePath, patched);
+export function patchFile(filePath: string, searchStr: string, replaceStr: string): void {
+  const content = readFile(filePath);
+  if (!content.includes(searchStr)) throw new Error(`Search string not found in ${filePath}`);
+  takeSnapshot(filePath);
+  fs.writeFileSync(path.resolve(filePath), content.replace(searchStr, replaceStr), 'utf8');
+  logger.info('Coder', `Patched ${filePath}`);
 }

@@ -6,10 +6,12 @@ export interface Snapshot {
 }
 
 export interface DiffResult {
-  unified: string;
+  filePath: string;
+  original: string;
+  modified: string;
+  patch: string;
   additions: number;
   deletions: number;
-  hasChanges: boolean;
 }
 
 export interface CodeRunResult {
@@ -17,4 +19,5 @@ export interface CodeRunResult {
   stderr: string;
   exitCode: number;
   durationMs: number;
+  timedOut: boolean;
 }

@@ -17,10 +17,16 @@ export function takeSnapshot(filePath: string): Snapshot {
   return { id, filePath, content, createdAt };
 }
 
-export function listSnapshots(filePath: string): Snapshot[] {
-  return getDb().prepare(
-    'SELECT id, file_path as filePath, content, created_at as createdAt FROM file_snapshots WHERE file_path = ? ORDER BY created_at DESC LIMIT 20'
-  ).all(filePath) as Snapshot[];
+export function listSnapshots(filePath?: string): Snapshot[] {
+  const db = getDb();
+  if (filePath) {
+    return db.prepare(
+      'SELECT id, file_path as filePath, content, created_at as createdAt FROM file_snapshots WHERE file_path = ? ORDER BY created_at DESC LIMIT 20'
+    ).all(filePath) as Snapshot[];
+  }
+  return db.prepare(
+    'SELECT id, file_path as filePath, content, created_at as createdAt FROM file_snapshots ORDER BY created_at DESC LIMIT 50'
+  ).all() as Snapshot[];
 }
 
 export function getSnapshot(id: string): Snapshot | null {
