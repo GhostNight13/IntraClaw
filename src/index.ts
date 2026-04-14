@@ -18,6 +18,7 @@ import { getConversationHistory, appendToHistory } from './channels/session-stor
 import { executeUniversalTask } from './executor/universal-executor';
 import { initCalendar } from './tools/calendar';
 import { initHomeAssistant } from './tools/smart-home';
+import { loadAllPlugins } from './plugins';
 
 async function main(): Promise<void> {
   logger.info('Main', '=== IntraClaw starting (Autonomous Mode) ===');
@@ -38,6 +39,7 @@ async function main(): Promise<void> {
   await initVectorMemory();
   initCalendar();
   await initHomeAssistant();
+  await loadAllPlugins();
   startServer();
 
   // ── Universal Channels Gateway ────────────────────────────────────────────

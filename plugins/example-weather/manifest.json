@@ -1,0 +1,6 @@
+{
+  "id": "example-weather",
+  "name": "Example Weather Plugin",
+  "version": "1.0.0",
+  "description": "Example plugin showing how to use @intraclaw/sdk"
+}

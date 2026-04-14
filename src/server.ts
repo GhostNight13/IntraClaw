@@ -34,6 +34,8 @@ import { getBusinessMemoryState } from './memory/business-memory';
 import { runREMCycle } from './memory/dreaming';
 import { generateEmailDigest, formatDigestForTelegram, getRules, addRule, deleteRule } from './tools/email-manager';
 import { authRouter } from './auth/routes';
+import { marketplaceRouter } from './marketplace';
+import { pluginsRouter } from './plugins';
 import { setLanguage, getCurrentLanguage } from './i18n';
 import { updateUser, findUserById } from './users/user-store';
 import { initCalendar, listAllEvents, createCalendarEvent, deleteCalendarEvent, findFreeSlots, getTodaysAgenda, isCalendarAvailable } from './tools/calendar';
@@ -88,6 +90,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // ─── Auth routes ─────────────────────────────────────────────────────────────
 app.use('/auth', authRouter);
+
+// ─── Marketplace routes ───────────────────────────────────────────────────────
+app.use('/api/marketplace', marketplaceRouter);
+
+// ─── Plugin routes ────────────────────────────────────────────────────────────
+app.use('/api/plugins', pluginsRouter);
 
 // ─── GET /api/status ──────────────────────────────────────────────────────────
 

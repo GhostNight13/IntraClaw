@@ -1,0 +1,12 @@
+{
+  "name": "@intraclaw/sdk",
+  "version": "1.0.0",
+  "description": "SDK for building IntraClaw plugins",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": ["intraclaw", "plugin", "sdk"],
+  "license": "MIT"
+}
