@@ -11,9 +11,9 @@ import type { Prospect, ContentPost } from '../types';
 
 // Database IDs
 const DB = {
-  CRM:     'd3a28c1de46745e99ee8a1889cca04be',  // Prospects / CRM
-  CONTENT: '95a61970e38c445c897fd427c031f44e',  // Content posts
-  CLIENTS: 'aef3cdec9745449d9bc8867b12503e16',  // Converted clients
+  CRM:     '5231b6a464a541fcb4b879b23f762ccc',  // 📧 CRM Prospects Agence
+  CONTENT: '95a61970e38c445c897fd427c031f44e',  // Content posts (à créer si besoin)
+  CLIENTS: '04be88317c7e4722a5e1c0831ab58494',  // 💼 Clients & Projets Freelance
 } as const;
 
 function getClient(): Client {

@@ -1,20 +1,100 @@
-version: "3.8"
+version: '3.9'
 
 services:
-  intraclaw:
+  # ─────────────────────────────────────
+  #  Core IntraClaw Agent
+  # ─────────────────────────────────────
+  core:
     build: .
+    container_name: intraclaw-core
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
     env_file: .env
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://intraclaw:${DB_PASSWORD:-intraclaw_pass}@db:5432/intraclaw
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_pass}@cache:6379
+      - CHROMA_URL=http://chroma:8000
     volumes:
       - ./data:/app/data
       - ./memory:/app/memory
+      - ./skills:/app/skills
+      - ./logs:/app/logs
     depends_on:
-      - chromadb
-    restart: unless-stopped
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+      chroma:
+        condition: service_started
+    networks:
+      - intraclaw
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
-  chromadb:
-    image: chromadb/chroma:latest
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./data/chroma:/chroma/chroma
+  # ─────────────────────────────────────
+  #  PostgreSQL (remplace SQLite en prod)
+  # ─────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: intraclaw-db
     restart: unless-stopped
+    environment:
+      POSTGRES_DB: intraclaw
+      POSTGRES_USER: intraclaw
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-intraclaw_pass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - intraclaw
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U intraclaw -d intraclaw"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────
+  #  Redis (cache + queues)
+  # ─────────────────────────────────────
+  cache:
+    image: redis:7-alpine
+    container_name: intraclaw-cache
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_pass} --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - intraclaw
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_pass}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────
+  #  ChromaDB (vector memory)
+  # ─────────────────────────────────────
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: intraclaw-chroma
+    restart: unless-stopped
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - intraclaw
+
+volumes:
+  postgres_data:
+  redis_data:
+  chroma_data:
+
+networks:
+  intraclaw:
+    driver: bridge

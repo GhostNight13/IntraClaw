@@ -15,7 +15,7 @@ export async function generateVideo(prompt: string): Promise<VideoResult> {
   const output = await replicate.run(
     'lucataco/ltx-video:8756c1f9c93f9ba4de2b0aa3e6498ce9d4cc0a50e6db0c46af0e44791706a41f',
     { input: { prompt, num_frames: 48, fps: 8 } }
-  ) as string;
+  ) as unknown as string | string[];
 
   const url = Array.isArray(output) ? output[0] : output;
   const filename = `video-${Date.now()}.mp4`;

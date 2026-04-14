@@ -1,0 +1,29 @@
+# Override dev — utiliser avec : docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+version: '3.9'
+
+services:
+  core:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: intraclaw-core-dev
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./src:/app/src
+      - ./skills:/app/skills
+      - ./memory:/app/memory
+      - ./data:/app/data
+    command: npx ts-node src/index.ts
+
+  db:
+    ports:
+      - "5432:5432"  # Expose en dev pour pgAdmin
+
+  cache:
+    ports:
+      - "6379:6379"  # Expose en dev
+
+  chroma:
+    ports:
+      - "8000:8000"  # Expose en dev

@@ -37,7 +37,9 @@ export async function elevenLabsTTS(text: string): Promise<Buffer | null> {
         body: JSON.stringify({
           text,
           model_id: 'eleven_turbo_v2_5',
-          voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.1 },
+          // JARVIS settings: high stability (calm/controlled), high similarity (consistent tone),
+          // low style (no expressiveness — cold & precise like JARVIS Iron Man)
+          voice_settings: { stability: 0.85, similarity_boost: 0.90, style: 0.0, use_speaker_boost: true },
         }),
       }
     );
@@ -60,24 +62,33 @@ export async function elevenLabsTTS(text: string): Promise<Buffer | null> {
 
 export async function macOsSay(text: string, outputPath: string): Promise<boolean> {
   try {
-    const voice = process.env.MACOS_VOICE ?? 'Daniel'; // Daniel = British English
-    // say -v Voice -o output.aiff "text" then convert to mp3 via afconvert
+    const voiceId = process.env.MACOS_VOICE_ID ?? 'com.apple.voice.enhanced.fr-FR.Thomas';
     const aiffPath = outputPath.replace(/\.mp3$/, '.aiff');
     const safeText = text.replace(/"/g, '\\"').slice(0, 500);
 
-    await execAsync(`/usr/bin/say -v "${voice}" -o "${aiffPath}" "${safeText}"`);
+    // Use say with -o to get audio file, with voice identifier
+    await execAsync(`/usr/bin/say --voice="${voiceId}" -o "${aiffPath}" --data-format=aiff "${safeText}"`);
 
-    // Convert aiff → mp3 using afconvert (built-in macOS)
+    // Convert aiff → m4a/mp3
     await execAsync(`/usr/bin/afconvert -f mp4f -d aac "${aiffPath}" "${outputPath}" 2>/dev/null || cp "${aiffPath}" "${outputPath}"`);
 
-    // Cleanup aiff
     try { fs.unlinkSync(aiffPath); } catch { /* ok */ }
 
-    logger.info('TTS', `macOS say: ${outputPath}`);
+    logger.info('TTS', `macOS TTS (Enhanced): ${outputPath}`);
     return true;
   } catch (err) {
-    logger.warn('TTS', 'macOS say failed', err instanceof Error ? err.message : err);
-    return false;
+    // Fallback to basic say
+    try {
+      const safeText = text.replace(/"/g, '\\"').slice(0, 500);
+      const aiffPath = outputPath.replace(/\.mp3$/, '.aiff');
+      await execAsync(`/usr/bin/say -v "Thomas (Enhanced)" -o "${aiffPath}" "${safeText}" 2>/dev/null || /usr/bin/say -v Thomas -o "${aiffPath}" "${safeText}"`);
+      await execAsync(`/usr/bin/afconvert -f mp4f -d aac "${aiffPath}" "${outputPath}" 2>/dev/null || cp "${aiffPath}" "${outputPath}"`);
+      try { fs.unlinkSync(aiffPath); } catch { /* ok */ }
+      return true;
+    } catch (err2) {
+      logger.warn('TTS', 'macOS TTS failed', err2 instanceof Error ? err2.message : err2);
+      return false;
+    }
   }
 }
 
@@ -129,8 +140,8 @@ export async function synthesize(text: string): Promise<TTSResult> {
 
 export async function speakNow(text: string): Promise<void> {
   try {
-    const voice = process.env.MACOS_VOICE ?? 'Daniel';
+    const voiceId = process.env.MACOS_VOICE_ID ?? 'com.apple.voice.enhanced.fr-FR.Thomas';
     const safeText = text.replace(/"/g, '\\"').slice(0, 300);
-    await execAsync(`/usr/bin/say -v "${voice}" "${safeText}"`);
+    await execAsync(`/usr/bin/say --voice="${voiceId}" "${safeText}" 2>/dev/null || /usr/bin/say -v "Thomas (Enhanced)" "${safeText}"`);
   } catch { /* non-blocking */ }
 }

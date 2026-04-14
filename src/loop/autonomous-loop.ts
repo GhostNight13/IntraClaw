@@ -10,6 +10,7 @@ import { sendTelegramMessage } from '../channels/telegram';
 import { broadcastWS } from '../server';
 import { LoopState, LoopAction, AgentResult } from '../types';
 import { logger } from '../utils/logger';
+import { runREMCycle } from '../memory/dreaming';
 
 const PERCEPTION_INTERVAL_MS = 5 * 60 * 1000;  // 5 min
 const MIN_ACTION_GAP_MS       = 30 * 1000;       // 30s min between actions
@@ -22,6 +23,7 @@ let _state: LoopState = {
 };
 let _consecutiveWaits = 0;
 let _loopTimeout: NodeJS.Timeout | null = null;
+let _lastREMDate: string | null = null;
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
@@ -69,6 +71,24 @@ async function tick(): Promise<void> {
       logger.info('AutonomousLoop', `Paused (${_state.pauseReason}) — skipping`);
       scheduleNext(PERCEPTION_INTERVAL_MS);
       return;
+    }
+
+    // ── REM Cycle: nocturnal memory consolidation (3h00-3h05) ────────
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    const today = now.toISOString().slice(0, 10);
+
+    if (hour === 3 && minute < 5 && _lastREMDate !== today) {
+      _lastREMDate = today;
+      logger.info('AutonomousLoop', 'Triggering nightly REM cycle...');
+      try {
+        const remReport = await runREMCycle();
+        logger.info('AutonomousLoop', `REM cycle completed: ${remReport.actionsReviewed} actions reviewed, ${remReport.patternsFound.length} patterns found`);
+        broadcastWS({ type: 'rem_cycle_done', report: remReport });
+      } catch (err) {
+        logger.error('AutonomousLoop', 'REM cycle failed', err instanceof Error ? err.message : err);
+      }
     }
 
     // ── Phase 1: Perception ─────────────────────────────────────────────

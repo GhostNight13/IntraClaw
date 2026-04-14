@@ -1,0 +1,35 @@
+id: calendar-agent
+name: Gestionnaire de Calendrier
+version: 1.0.0
+description: |
+  Gere ton agenda Google Calendar et Outlook.
+  Cree, liste, modifie et supprime des evenements.
+  Trouve des creneaux libres pour les reunions.
+triggers:
+  - "reunion"
+  - "rendez-vous"
+  - "rdv"
+  - "agenda"
+  - "disponible"
+  - "creneau"
+  - "planifie"
+  - "schedule"
+  - "meeting"
+  - "calendar"
+  - "calendrier"
+  - "dispo"
+  - "libre"
+steps:
+  - action: "parse_calendar_intent"
+    description: "Determine l'action : list | create | update | delete | find_slots"
+  - action: "execute_calendar_action"
+    description: "Appelle le bon tool calendar"
+  - action: "respond_naturally"
+    description: "Resume en francais naturel"
+examples:
+  - "Qu'est-ce que j'ai demain ?"
+  - "Cree un RDV avec Marie vendredi 15h-16h"
+  - "Trouve-moi un creneau libre de 1h cette semaine"
+  - "Annule le meeting de mercredi"
+  - "Mon agenda d'aujourd'hui"
+  - "Je suis dispo quand demain ?"

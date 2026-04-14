@@ -1,0 +1,30 @@
+id: email-manager
+name: Gestionnaire d'Emails
+version: 1.0.0
+description: |
+  Trie, analyse et résume tes emails automatiquement.
+  Génère un digest quotidien avec catégorisation IA.
+triggers:
+  - "emails"
+  - "mail"
+  - "inbox"
+  - "boîte"
+  - "courrier"
+  - "résumé emails"
+  - "digest"
+  - "trie"
+  - "urgent"
+  - "newsletters"
+steps:
+  - action: "detect_intent"
+    description: "list | digest | triage | rules"
+  - action: "execute_email_action"
+    description: "Appelle le bon outil"
+  - action: "respond_naturally"
+    description: "Réponse structurée avec catégories"
+examples:
+  - "Résume mes emails d'aujourd'hui"
+  - "J'ai des emails urgents ?"
+  - "Trie mes 10 derniers mails"
+  - "Désabonne-moi des newsletters"
+  - "Ajoute une règle : si sujet contient 'devis' -> PROSPECT"

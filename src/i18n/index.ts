@@ -15,8 +15,8 @@ export async function initI18n(): Promise<void> {
   });
 }
 
-export function t(key: string, options?: object): string {
-  return i18next.t(key, options) as string;
+export function t(key: string, options?: Record<string, unknown>): string {
+  return i18next.t(key, options as any) as string;
 }
 
 export function setLanguage(lng: string): void {

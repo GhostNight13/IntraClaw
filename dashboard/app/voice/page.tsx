@@ -311,7 +311,7 @@ export default function VoicePage() {
     if (!SpeechRecognitionCls) { setSupported(false); return; }
 
     const recog = new SpeechRecognitionCls();
-    recog.lang              = 'fr-BE';
+    recog.lang              = 'fr-FR';
     recog.continuous        = false;
     recog.interimResults    = true;
     recog.maxAlternatives   = 1;
