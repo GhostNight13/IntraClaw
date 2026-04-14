@@ -20,6 +20,7 @@ import { initCalendar } from './tools/calendar';
 import { initHomeAssistant } from './tools/smart-home';
 import { loadAllPlugins } from './plugins';
 import { initWorkflowScheduler } from './workflows';
+import { indexAllTools } from './tools/tool-retriever';
 
 async function main(): Promise<void> {
   logger.info('Main', '=== IntraClaw starting (Autonomous Mode) ===');
@@ -38,6 +39,7 @@ async function main(): Promise<void> {
   initTelegram();
   await initMCPServers();
   await initVectorMemory();
+  indexAllTools().catch(err => logger.warn('Startup', 'Tool indexing failed', err instanceof Error ? err.message : err));
   initCalendar();
   await initHomeAssistant();
   await loadAllPlugins();

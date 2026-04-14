@@ -56,6 +56,8 @@ import { runCode, runNodeCode, runShellCommand } from './tools/coder/code-runner
 import { listSnapshots, rollbackToSnapshot } from './tools/coder/rollback';
 import { createEntity, updateEntity, deleteEntity, listEntities, searchEntities, createRelationship, deleteRelationship, getNeighbors } from './memory/graph/graph-memory';
 import { extractSubgraph, getGraphStats } from './memory/graph/graph-query';
+import { getAllTools, getToolsByCategory } from './tools/tool-registry';
+import { getRelevantTools } from './tools/tool-retriever';
 
 const PORT = parseInt(process.env.API_PORT ?? '3001', 10);
 let schedulerPaused = false;
@@ -1154,6 +1156,19 @@ app.delete('/api/graph/relationships/:id', (req: Request, res: Response) => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   deleteRelationship(id);
   res.json({ ok: true });
+});
+
+// ─── Tool Retrieval endpoints ─────────────────────────────────────────────────
+
+app.get('/api/tools', (_req: Request, res: Response) => {
+  res.json(getAllTools());
+});
+
+app.get('/api/tools/search', async (req: Request, res: Response) => {
+  const { q, category } = req.query as { q?: string; category?: string };
+  if (category && !q) { res.json(getToolsByCategory(category)); return; }
+  if (!q) { res.json(getAllTools()); return; }
+  res.json(await getRelevantTools(q, 10));
 });
 
 // ─── Health check ─────────────────────────────────────────────────────────────
