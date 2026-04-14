@@ -1,5 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { createServer } from 'http';
+import fs from 'fs';
+import path from 'path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { logger } from './utils/logger';
 import { rateLimiter } from './utils/rate-limiter';
@@ -591,6 +593,44 @@ app.post('/api/memory/rem', async (_req: Request, res: Response) => {
     res.json(report);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/memory/rem/report — Last REM cycle sections from HEARTBEAT.md ──
+
+app.get('/api/memory/rem/report', (_req: Request, res: Response) => {
+  try {
+    const heartbeatPath = path.join(process.cwd(), 'memory', 'HEARTBEAT.md');
+    if (!fs.existsSync(heartbeatPath)) {
+      return res.json({ exists: false, content: '', lastModified: null });
+    }
+    const content = fs.readFileSync(heartbeatPath, 'utf-8');
+    const stat = fs.statSync(heartbeatPath);
+    // Extract last 3 REM cycle sections
+    const remSections = content.split('## 💤 Cycle REM').slice(1, 4).map(s => '## 💤 Cycle REM' + s);
+    res.json({
+      exists: true,
+      lastModified: stat.mtime.toISOString(),
+      recentCycles: remSections,
+      totalLength: content.length,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ─── GET /api/memory/rem/history — Compressed memories JSON ──────────────────
+
+app.get('/api/memory/rem/history', (_req: Request, res: Response) => {
+  try {
+    const compressedPath = path.join(process.cwd(), 'data', 'compressed-memories.json');
+    if (!fs.existsSync(compressedPath)) {
+      return res.json({ memories: [], total: 0 });
+    }
+    const memories = JSON.parse(fs.readFileSync(compressedPath, 'utf-8')) as unknown[];
+    res.json({ memories, total: memories.length });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 
