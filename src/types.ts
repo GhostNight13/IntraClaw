@@ -29,6 +29,7 @@ export enum AgentTask {
   COLD_EMAIL     = 'cold_email',
   EVENING_REPORT = 'evening_report',
   MAINTENANCE    = 'maintenance',
+  REM_DREAM      = 'rem_dream',
 }
 
 // ─── Core entities ────────────────────────────────────────────────────────────

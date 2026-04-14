@@ -46,6 +46,12 @@ const JOBS: ScheduledJob[] = [
     task:           AgentTask.MAINTENANCE,
     enabled:        true,
   },
+  {
+    name:           'REM Cycle',
+    cronExpression: '0 3 * * *',     // Every night at 03:00
+    task:           AgentTask.REM_DREAM,
+    enabled:        true,
+  },
 ];
 
 // ─── Task handlers ────────────────────────────────────────────────────────────

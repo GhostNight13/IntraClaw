@@ -16,6 +16,7 @@ import { runReportingAgent } from './reporting';
 import { analyzeAndPropose } from './self-improvement';
 import { runEnhancedMemory } from '../memory/enhanced';
 import { runStrategyEvolution } from '../evolution/strategy-evolver';
+import { runREMCycle } from '../memory/dreaming';
 import { AgentTask, ProspectStatus } from '../types';
 import type { AgentResult } from '../types';
 
@@ -308,7 +309,30 @@ export async function runTask(task: AgentTask): Promise<AgentResult> {
       await runStrategyEvolution().catch(err =>
         logger.warn('Coordinator', 'Strategy evolution failed (non-fatal)', err instanceof Error ? err.message : err)
       );
+      // Module 6: REM dreaming — nightly memory consolidation & pattern mining
+      await runREMCycle().catch(err =>
+        logger.warn('Coordinator', 'REM cycle failed (non-fatal)', err instanceof Error ? err.message : err)
+      );
       return report;
+    }
+
+    case AgentTask.REM_DREAM: {
+      const remReport = await runREMCycle();
+      logger.info('Coordinator', 'REM cycle complete', {
+        actionsReviewed:    remReport.actionsReviewed,
+        patternsFound:      remReport.patternsFound.length,
+        memoriesCompressed: remReport.memoriesCompressed,
+        heartbeatUpdated:   remReport.heartbeatUpdated,
+        durationMs:         remReport.durationMs,
+      });
+      return {
+        task,
+        success:    true,
+        data:       remReport,
+        durationMs: remReport.durationMs,
+        model:      'claude',
+        timestamp:  remReport.completedAt,
+      };
     }
 
     default: {
