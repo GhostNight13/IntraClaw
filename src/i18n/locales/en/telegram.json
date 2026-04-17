@@ -1,0 +1,19 @@
+{
+  "unauthorized": "⛔ Not authorized.",
+  "thinking": "🧠 Thinking…",
+  "task_completed": "✅ Task completed!",
+  "task_failed": "❌ Failed: {{error}}",
+  "unknown_error": "Unknown error",
+  "step_progress": "⚙️ Step {{current}}/{{total}}",
+  "loop_already_paused": "⚠️ Already paused.",
+  "loop_not_active": "⚠️ Autonomous loop is not active.",
+  "loop_paused": "⏸ Autonomous loop + scheduler paused.\nSay \"resume\" to restart.",
+  "loop_all_active": "⚠️ Everything is already running!",
+  "loop_restarted": "▶️ Autonomous loop + scheduler restarted!",
+  "evolve_started": "🧬 Evolution cycle started\nCurrent version: {{version}}\nSteps: candidate → LLM → constitution → tsc → review → commit → post-commit verify.\nDuration: typically 1-3 min…",
+  "evolve_crashed": "❌ Cycle crashed: {{error}}",
+  "confirmation_timeout": "Refused by user or timeout (60s)",
+  "error_generic": "❌ Error processing your message.",
+  "help_title": "IntraClaw commands",
+  "help_intro": "Natural language: just tell me what to do.\n\nCommands:"
+}

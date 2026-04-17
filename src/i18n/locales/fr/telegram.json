@@ -1,0 +1,19 @@
+{
+  "unauthorized": "⛔ Non autorisé.",
+  "thinking": "🧠 Je réfléchis et je m'y mets…",
+  "task_completed": "✅ Tâche terminée !",
+  "task_failed": "❌ Échoué : {{error}}",
+  "unknown_error": "Erreur inconnue",
+  "step_progress": "⚙️ Étape {{current}}/{{total}}",
+  "loop_already_paused": "⚠️ Déjà en pause.",
+  "loop_not_active": "⚠️ La boucle autonome n'est pas active.",
+  "loop_paused": "⏸ Boucle autonome + scheduler en pause.\nDis \"reprends\" pour relancer.",
+  "loop_all_active": "⚠️ Tout est déjà actif !",
+  "loop_restarted": "▶️ Boucle autonome + scheduler relancés !",
+  "evolve_started": "🧬 Cycle d'évolution démarré\nVersion actuelle : {{version}}\nÉtapes : candidat → LLM → constitution → tsc → review → commit → vérif post-commit.\nDurée : typiquement 1-3 min…",
+  "evolve_crashed": "❌ Cycle crashé : {{error}}",
+  "confirmation_timeout": "Refusé par l'utilisateur ou timeout (60s)",
+  "error_generic": "❌ Erreur dans le traitement de ton message.",
+  "help_title": "Commandes IntraClaw",
+  "help_intro": "Langage naturel : dis-moi simplement quoi faire.\n\nCommandes :"
+}
