@@ -4,10 +4,12 @@ import * as crypto from 'crypto';
 import { logger } from './utils/logger';
 import { rateLimiter } from './utils/rate-limiter';
 import { costTracker } from './utils/cost-tracker';
-import { callClaude, ClaudeRateLimitError } from './claude';
-import { callGemma, callLlama, isOllamaAvailable } from './ollama';
 import { resolveEffectiveTier, recordSuccess, recordFailure } from './routing/pal-router';
+import { callWithFallback, getProviderStatus, getAvailableProviders, refreshProviders } from './providers/multi-provider';
 import type { AIRequest, AIResponse } from './types';
+
+// Re-export provider status for dashboard/server
+export { getProviderStatus, getAvailableProviders, refreshProviders } from './providers/multi-provider';
 
 // ─── Response cache ────────────────────────────────────────────────────────────
 
@@ -72,10 +74,22 @@ function incrementDailyCount(): void {
 // ─── Smart provider ───────────────────────────────────────────────────────────
 
 /**
- * Intelligent AI provider: Claude → Gemma 4 → Llama
- * - Respects rate limits and daily budget
+ * Intelligent AI provider with multi-provider fallback.
+ *
+ * Priority order (auto-discovered at startup):
+ *   1. claude-cli    (if `which claude` works)
+ *   2. codex-cli     (if `which codex` works)
+ *   3. gemini-cli    (if `which gemini` works)
+ *   4. ollama-gemma  (if Ollama is running)
+ *   5. ollama-llama  (if Ollama is running)
+ *   6. claude-api    (if ANTHROPIC_API_KEY set)
+ *   7. openai-api    (if OPENAI_API_KEY set)
+ *   8. gemini-api    (if GEMINI_API_KEY set)
+ *
+ * - Respects rate limits: if a provider returns 429, skips to next
  * - Caches identical requests for 1h
- * - Falls back to local models when Claude is unavailable
+ * - PAL Router: escalates/downgrades tiers based on success/failure streaks
+ * - Logs which provider handled each call
  */
 export async function ask(request: AIRequest): Promise<AIResponse> {
   // 1. Cache lookup (skip for high-temp creative tasks)
@@ -84,63 +98,36 @@ export async function ask(request: AIRequest): Promise<AIResponse> {
     const cacheKey = getCacheKey(request);
     const cached = readCache(cacheKey);
     if (cached) {
-      logger.info('AI', 'Cache hit', { model: cached.model });
+      logger.info('AI', 'Cache hit', { model: cached.model, providerId: cached.providerId });
       return cached;
     }
   }
 
   incrementDailyCount();
 
-  // 2. Try Claude first (uses Max subscription — no artificial cap)
-  //    PAL Router: resolve effective tier (may escalate or downgrade based on recent history)
+  // 2. PAL Router: resolve effective tier (may escalate or downgrade based on recent history)
   const requestedTier = request.modelTier ?? 'balanced';
   const effectiveTier = resolveEffectiveTier(requestedTier);
-  const claudeRequest: AIRequest = effectiveTier !== requestedTier
+  const routedRequest: AIRequest = effectiveTier !== requestedTier
     ? { ...request, modelTier: effectiveTier }
     : request;
 
   rateLimiter.check('claude'); // increments counter for observability only, never blocks
+
+  // 3. Call providers in priority order with automatic fallback
   try {
-    const response = await callClaude(claudeRequest);
+    const response = await callWithFallback(routedRequest);
     costTracker.record(response.inputTokens, response.outputTokens); // tracking only
     recordSuccess(effectiveTier);
+    logger.info('AI', `Served by ${response.providerId ?? response.model} (tier=${effectiveTier})`);
     if (useCache) writeCache(getCacheKey(request), response);
     return response;
   } catch (err) {
     recordFailure(effectiveTier);
-    if (err instanceof ClaudeRateLimitError) {
-      // Real Anthropic rate limit — fall through to Ollama
-      logger.warn('AI', 'Claude rate limited by Anthropic — falling back to Ollama', err.message);
-    } else {
-      // Other error (timeout, auth, etc.) — still try Ollama as last resort
-      logger.warn('AI', 'Claude failed — falling back to Ollama', err instanceof Error ? err.message : err);
-    }
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('AI', 'All providers failed', message);
+    throw new Error(`All AI providers failed. ${message}`);
   }
-
-  // 3. Try Gemma 3 (Ollama) — only reached on real Claude failure
-  const ollamaUp = await isOllamaAvailable();
-  if (ollamaUp) {
-    try {
-      const response = await callGemma(request);
-      if (useCache) writeCache(getCacheKey(request), response);
-      return response;
-    } catch (err) {
-      logger.warn('AI', 'Gemma failed, falling back to Llama', err instanceof Error ? err.message : err);
-    }
-
-    // 4. Try Llama fallback
-    try {
-      const response = await callLlama(request);
-      if (useCache) writeCache(getCacheKey(request), response);
-      return response;
-    } catch (err) {
-      logger.error('AI', 'Llama also failed', err instanceof Error ? err.message : err);
-    }
-  } else {
-    logger.warn('AI', 'Ollama not available — all local models unreachable');
-  }
-
-  throw new Error('All AI providers failed. Check Claude CLI auth and Ollama status.');
 }
 
 export function getDailyCallCount(): number {

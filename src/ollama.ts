@@ -4,9 +4,10 @@ import type { AIRequest, AIResponse } from './types';
 const OLLAMA_BASE_URL = 'http://localhost:11434';
 const DEFAULT_TIMEOUT_MS = 120_000;
 
-// Available local models — prefer Gemma 4, fall back to Llama
+// Available local models — detected via `ollama list` on host
+// gemma3 not installed → use llama3.2 for both
 export const OLLAMA_MODELS = {
-  primary:  'gemma3:latest',
+  primary:  'llama3.2:latest',
   fallback: 'llama3.2:latest',
 } as const;
 
@@ -95,6 +96,7 @@ async function callModel(modelKey: OllamaModelKey, request: AIRequest): Promise<
   return {
     content: data.message.content.trim(),
     model: aiModelName,
+    providerId: modelKey === 'primary' ? 'ollama-gemma' : 'ollama-llama',
     inputTokens,
     outputTokens,
     durationMs,

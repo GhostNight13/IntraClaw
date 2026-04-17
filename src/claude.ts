@@ -5,14 +5,14 @@ import * as path from 'path';
 import { logger } from './utils/logger';
 import type { AIRequest, AIResponse, ModelTier } from './types';
 
-const TIMEOUT_MS   = 120_000; // 2 min
-const MAX_BUFFER   = 1024 * 1024; // 1 MB
+const TIMEOUT_MS   = 180_000; // 3 min (planning tasks can be slow)
+const MAX_BUFFER   = 10 * 1024 * 1024; // 10 MB (some plans are verbose)
 
-/** Maps ModelTier to concrete Claude model identifiers */
+/** Maps ModelTier to Claude CLI model aliases (v2.1+) */
 const MODEL_BY_TIER: Record<ModelTier, string> = {
-  fast:      'claude-3-5-haiku-20241022',
-  balanced:  'claude-3-5-sonnet-20241022',
-  powerful:  'claude-3-7-sonnet-20250219',
+  fast:      'haiku',
+  balanced:  'sonnet',
+  powerful:  'opus',
 };
 
 function resolveModel(tier?: ModelTier): string {
@@ -116,6 +116,7 @@ export async function callClaude(request: AIRequest): Promise<AIResponse> {
   return {
     content: output,
     model: 'claude',
+    providerId: 'claude-cli',
     inputTokens,
     outputTokens,
     durationMs,

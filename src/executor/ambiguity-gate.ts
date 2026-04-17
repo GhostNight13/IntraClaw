@@ -15,7 +15,7 @@ export interface AmbiguityResult {
   };
 }
 
-const AMBIGUITY_THRESHOLD = 0.3;
+const AMBIGUITY_THRESHOLD = 0.7; // permissif — agir plutôt que bloquer
 
 /**
  * Analyse une demande et retourne un score d'ambiguïté.
@@ -24,31 +24,16 @@ const AMBIGUITY_THRESHOLD = 0.3;
 export async function evaluateAmbiguity(request: string): Promise<AmbiguityResult> {
   logger.info('AmbiguityGate', `Evaluating: "${request.slice(0, 80)}..."`);
 
-  const prompt = `Tu es un analyste de clarté. Évalue cette demande utilisateur :
+  const prompt = `Tu es un analyste de clarté. Évalue cette demande utilisateur.
+
+RÈGLE IMPORTANTE : Si tu peux deviner l'intention de l'utilisateur, même vaguement, le score doit être BAS (< 0.5).
+On préfère AGIR et se tromper que de BLOQUER l'utilisateur avec des questions.
+"Crée une app" = clair (on sait qu'il veut une app). "Fais un truc" = flou.
 
 DEMANDE : "${request}"
 
-Analyse selon 3 dimensions (score 0.0 = parfaitement clair, 1.0 = totalement flou) :
-
-1. **goalClarity** : Sait-on exactement CE QUE l'utilisateur veut ?
-   - 0.0 = "Crée un fichier PDF avec le titre 'Rapport Q1' contenant les ventes par région"
-   - 0.5 = "Crée un rapport"
-   - 1.0 = "Fais un truc"
-
-2. **constraintClarity** : Sait-on les LIMITES et CONTRAINTES ?
-   - 0.0 = "En React, responsive, dark mode, déployé sur Vercel"
-   - 0.5 = "Un site web"
-   - 1.0 = pas d'info du tout
-
-3. **successClarity** : Sait-on QUAND c'est terminé ?
-   - 0.0 = "Le formulaire envoie un email et affiche un message de confirmation"
-   - 0.5 = "Ça marche"
-   - 1.0 = aucune idée de ce qui est attendu
-
-Score global = goalClarity * 0.4 + constraintClarity * 0.3 + successClarity * 0.3
-
-Si le score global > 0.3, génère 2-4 questions COURTES et PRÉCISES pour clarifier.
-Les questions doivent être en français, directes, pas de blabla.
+Score 0.0 = parfaitement clair, 1.0 = totalement impossible à comprendre.
+Score > 0.7 SEULEMENT si on ne sait VRAIMENT PAS ce que l'utilisateur veut.
 
 Réponds UNIQUEMENT en JSON :
 {
@@ -56,8 +41,8 @@ Réponds UNIQUEMENT en JSON :
   "constraintClarity": 0.5,
   "successClarity": 0.3,
   "score": 0.32,
-  "questions": ["Quel format veux-tu ? (PDF, Word, PPT)", "C'est pour quel client ?"],
-  "clarifiedRequest": "Si score <= 0.3, reformule la demande de manière claire et exécutable"
+  "questions": [],
+  "clarifiedRequest": "reformule la demande"
 }`;
 
   try {
