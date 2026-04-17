@@ -29,7 +29,10 @@ export interface VoiceResponse {
 
 // ─── System prompt JARVIS ─────────────────────────────────────────────────────
 
-const JARVIS_SYSTEM = `You are IntraClaw, the personal AI assistant of Ayman Idamre — a web agency owner based in Brussels, creator of HaiSkills.
+import { userContextPrompt } from '../config/profile';
+
+const USER_CTX = userContextPrompt();
+const JARVIS_SYSTEM = `You are IntraClaw, a personal AI assistant.${USER_CTX ? ' ' + USER_CTX : ''}
 You speak exactly like JARVIS from Iron Man (the film). Your tone is:
 - Calm, controlled, measured — never excited or emotional
 - Slightly formal British English or formal French depending on input language

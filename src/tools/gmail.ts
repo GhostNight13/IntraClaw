@@ -5,22 +5,29 @@
 import { OAuth2Client } from 'google-auth-library';
 import { logger } from '../utils/logger';
 import { rateLimiter } from '../utils/rate-limiter';
+import { userName, userEmail, userWebsite, userBusiness } from '../config/profile';
 
-const SENDER_EMAIL = process.env.GMAIL_SENDER_EMAIL ?? 'intra.web.site1@gmail.com';
-const SENDER_NAME  = 'Ayman Idamre';
+const SENDER_EMAIL = process.env.GMAIL_SENDER_EMAIL ?? userEmail();
+const SENDER_NAME  = userName();
 const GMAIL_API    = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
 // ─── Signature & RGPD footer ──────────────────────────────────────────────────
 
-const SIGNATURE_HTML = `
+function buildSignature(): string {
+  const name = userName();
+  const email = userEmail();
+  const site = userWebsite();
+  const biz = userBusiness();
+  return `
 <br><br>
 <div style="font-family:Arial,sans-serif;font-size:13px;color:#555;border-top:1px solid #ddd;padding-top:10px;margin-top:10px;">
-  <strong>Ayman Idamre</strong><br>
-  Développeur Web — Agence Web Bruxelles<br>
-  📧 <a href="mailto:intra.web.site1@gmail.com">intra.web.site1@gmail.com</a> |
-  🌐 <a href="https://intra-site.com">intra-site.com</a> |
-  🎓 <a href="https://haiskills.vercel.app">haiskills.vercel.app</a>
+  <strong>${name}</strong><br>
+  ${biz || 'IntraClaw user'}<br>
+  📧 <a href="mailto:${email}">${email}</a>${site ? ` | 🌐 <a href="${site}">${site.replace(/^https?:\/\//, '')}</a>` : ''}
 </div>`;
+}
+
+const SIGNATURE_HTML = buildSignature();
 
 const RGPD_FOOTER_HTML = `
 <div style="font-family:Arial,sans-serif;font-size:11px;color:#999;margin-top:20px;border-top:1px solid #eee;padding-top:8px;">
@@ -134,7 +141,7 @@ export interface ReceivedEmail {
 
 /**
  * Send an HTML email via Gmail API.
- * Automatically appends Ayman's signature and RGPD footer.
+ * Automatically appends the configured user signature and RGPD footer.
  */
 export async function sendEmail(
   to: string,

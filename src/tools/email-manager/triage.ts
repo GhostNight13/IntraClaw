@@ -5,6 +5,7 @@
 import type { TriageResult } from './types';
 import { ask } from '../../ai';
 import { AgentTask } from '../../types';
+import { userContextPrompt } from '../../config/profile';
 
 function log(level: 'info' | 'warn' | 'error', msg: string) {
   const ts = new Date().toISOString().slice(11, 19);
@@ -18,7 +19,8 @@ export async function triageEmail(email: {
   body: string;
   date?: string;
 }): Promise<TriageResult> {
-  const prompt = `Tu es un assistant de triage d'emails pour un développeur web indépendant belge (Ayman, agence web Bruxelles + plateforme HaiSkills).
+  const userCtx = userContextPrompt() || 'an independent developer';
+  const prompt = `Tu es un assistant de triage d'emails pour ${userCtx}.
 
 EMAIL À TRIER :
 De : ${email.from}
