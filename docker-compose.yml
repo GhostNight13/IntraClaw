@@ -1,100 +1,38 @@
 version: '3.9'
 
+# ┌──────────────────────────────────────────────────────────────┐
+# │  IntraClaw — simple single-container deployment               │
+# │  Usage: docker compose up -d                                   │
+# │                                                                │
+# │  SQLite for everything — perfect for solo / small team use.    │
+# │  For multi-user Postgres+Redis+Chroma, see                     │
+# │  docker-compose.full.yml (copy from docker-compose.yml.full).  │
+# └──────────────────────────────────────────────────────────────┘
+
 services:
-  # ─────────────────────────────────────
-  #  Core IntraClaw Agent
-  # ─────────────────────────────────────
-  core:
+  intraclaw:
     build: .
-    container_name: intraclaw-core
+    image: intraclaw:latest
+    container_name: intraclaw
     restart: unless-stopped
     ports:
-      - "3000:3000"
-    env_file: .env
+      - "${PORT:-3001}:3001"
+    env_file:
+      - .env
     environment:
-      - NODE_ENV=production
-      - DATABASE_URL=postgresql://intraclaw:${DB_PASSWORD:-intraclaw_pass}@db:5432/intraclaw
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_pass}@cache:6379
-      - CHROMA_URL=http://chroma:8000
+      NODE_ENV: production
     volumes:
+      # SQLite DB, cache, autonomous state
       - ./data:/app/data
+      # User profile, SOUL.md, learned memory
       - ./memory:/app/memory
+      # Static skills
       - ./skills:/app/skills
+      # Log files (rotated daily)
       - ./logs:/app/logs
-    depends_on:
-      db:
-        condition: service_healthy
-      cache:
-        condition: service_healthy
-      chroma:
-        condition: service_started
-    networks:
-      - intraclaw
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
-      retries: 5
-
-  # ─────────────────────────────────────
-  #  PostgreSQL (remplace SQLite en prod)
-  # ─────────────────────────────────────
-  db:
-    image: postgres:16-alpine
-    container_name: intraclaw-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: intraclaw
-      POSTGRES_USER: intraclaw
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-intraclaw_pass}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - intraclaw
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U intraclaw -d intraclaw"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ─────────────────────────────────────
-  #  Redis (cache + queues)
-  # ─────────────────────────────────────
-  cache:
-    image: redis:7-alpine
-    container_name: intraclaw-cache
-    restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_pass} --appendonly yes
-    volumes:
-      - redis_data:/data
-    networks:
-      - intraclaw
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_pass}", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ─────────────────────────────────────
-  #  ChromaDB (vector memory)
-  # ─────────────────────────────────────
-  chroma:
-    image: chromadb/chroma:latest
-    container_name: intraclaw-chroma
-    restart: unless-stopped
-    volumes:
-      - chroma_data:/chroma/chroma
-    environment:
-      - IS_PERSISTENT=TRUE
-      - ANONYMIZED_TELEMETRY=FALSE
-    networks:
-      - intraclaw
-
-volumes:
-  postgres_data:
-  redis_data:
-  chroma_data:
-
-networks:
-  intraclaw:
-    driver: bridge
+      retries: 3
+      start_period: 30s
