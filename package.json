@@ -1,14 +1,26 @@
 {
   "name": "intraclaw",
-  "version": "1.0.0",
-  "description": "Agent IA autonome personnel — Agence Web + HaiSkills",
+  "version": "0.1.0",
+  "description": "IntraClaw — self-hosted autonomous AI agent. Multi-LLM (Claude CLI, Codex, Gemini, Ollama, APIs), multi-channel (Telegram/Discord/Slack/WhatsApp/SMS/Email), Voyager-style skill library, LangGraph StateGraph, Ouroboros self-evolution with constitution gates.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/intraclaw/intraclaw.git"
+  },
+  "homepage": "https://github.com/intraclaw/intraclaw#readme",
+  "bugs": {
+    "url": "https://github.com/intraclaw/intraclaw/issues"
+  },
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node src/index.ts",
+    "chat": "ts-node src/repl/chat.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint src/",
-    "test": "jest",
+    "test": "vitest run --reporter=verbose",
+    "test:watch": "vitest",
+    "test:smoke": "vitest run tests/smoke --reporter=verbose",
+    "test:coverage": "vitest run --coverage",
     "docker:start": "bash scripts/start.sh",
     "docker:stop": "bash scripts/stop.sh",
     "docker:update": "bash scripts/update.sh",
@@ -18,13 +30,20 @@
   },
   "keywords": [
     "ai-agent",
-    "automation",
-    "prospecting",
-    "web-agency"
+    "autonomous-agent",
+    "llm",
+    "claude",
+    "langgraph",
+    "voyager",
+    "ouroboros",
+    "self-evolving",
+    "multi-llm",
+    "telegram-bot",
+    "mcp",
+    "open-source"
   ],
-  "author": "Ayman Idamre",
-  "license": "UNLICENSED",
-  "private": true,
+  "author": "IntraClaw contributors",
+  "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",
     "@fal-ai/serverless-client": "^0.15.0",
@@ -32,7 +51,9 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@notionhq/client": "^2.3.0",
     "@slack/bolt": "^4.7.0",
+    "@types/pdfkit": "^0.17.5",
     "@types/qrcode": "^1.5.6",
+    "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.8.0",
     "chalk": "^4.1.2",
     "chromadb": "^3.4.3",
@@ -48,11 +69,13 @@
     "i18next-fs-backend": "^2.6.3",
     "inquirer": "^8.2.7",
     "isomorphic-fetch": "^3.0.0",
+    "jsonwebtoken": "^9.0.3",
     "matrix-js-sdk": "^41.3.0",
     "node-cron": "^4.2.1",
     "ora": "^5.4.1",
     "otplib": "^11.0.1",
     "pdf-lib": "^1.17.1",
+    "pdfkit": "^0.18.0",
     "playwright": "^1.59.1",
     "pptxgenjs": "^4.0.1",
     "puppeteer": "^24.40.0",
@@ -74,13 +97,16 @@
     "@types/diff": "^7.0.2",
     "@types/express": "^5.0.6",
     "@types/inquirer": "^8.2.12",
+    "@types/isomorphic-fetch": "^0.0.39",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.0.0",
     "@types/node-cron": "^3.0.11",
     "@types/qrcode-terminal": "^0.12.2",
     "@types/simple-oauth2": "^5.0.8",
     "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^4.1.4",
     "ts-node": "^10.9.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.4"
   }
 }
