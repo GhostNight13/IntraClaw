@@ -62,6 +62,12 @@ async function generateColdEmail(prospect: Prospect): Promise<Pick<ColdEmail, 's
   // Detect language from notes field
   const isNL = prospect.notes?.includes('Langue: NL') ?? false;
   const hasWebsite = !!prospect.website;
+  // Identity pulled from profile (no hardcodes)
+  const { userName, userEmail, userWebsite } = await import('../config/profile');
+  const senderName = userName();
+  const senderEmail = userEmail();
+  const portfolioUrl = userWebsite() || 'your-portfolio.com';
+  const portfolioHost = portfolioUrl.replace(/^https?:\/\//, '');
 
   const styleGuide = isNL ? `
 STIJL (Nederlands — Vlaanderen):
@@ -71,7 +77,7 @@ STIJL (Nederlands — Vlaanderen):
 - Max 120 woorden
 - Toon: vriendelijk maar professioneel, niet aanmatigend
 - CTA: "Mag ik u een gratis mockup sturen?" of "Heeft u 10 minuten deze week?"
-- Handtekening: Ayman Idamre\nWebdesign professional\nintra-site.com · intra.web.site1@gmail.com
+- Handtekening: ${senderName}\nWebdesign professional\n${portfolioHost} · ${senderEmail}
 - GDPR: "Wenst u geen berichten meer? Antwoord STOP."
 
 VOORBEELD AYMAN'S STIJL:
@@ -86,12 +92,12 @@ Ik bekeek ${hasWebsite ? `uw site ${prospect.website}` : `uw aanwezigheid op Goo
 
 Voor een zaak zoals [naam] in [stad] kan een professionele website echt het verschil maken.
 
-Bekijk een voorbeeld van mijn werk: intra-site.com
+Bekijk een voorbeeld van mijn werk: ${portfolioHost}
 
 Gratis mockup beschikbaar, zonder engagement.
 
-Ayman Idamre
-intra-site.com · intra.web.site1@gmail.com` : `
+${senderName}
+${portfolioHost} · ${senderEmail}` : `
 STYLE (Français — Bruxelles/Wallonie) :
 - Ne JAMAIS commencer par "Je m'appelle" ou "Je suis développeur"
 - Commencer par "J'ai visité votre site X" ou "En cherchant X sur Google, j'ai remarqué..."
@@ -100,7 +106,7 @@ STYLE (Français — Bruxelles/Wallonie) :
 - Ton : direct, bienveillant, jamais condescendant
 - Observer 1 chose SPÉCIFIQUE sur leur présence (pas générique)
 - CTA : "Appel de 10 minutes cette semaine ?" ou "Répondez simplement si intéressé"
-- Signature : Ayman Idamre\nCréation de sites web professionnels\nintra-site.com · intra.web.site1@gmail.com
+- Signature : ${senderName}\nCréation de sites web professionnels\n${portfolioHost} · ${senderEmail}
 - RGPD : "Si vous ne souhaitez plus recevoir nos messages, répondez STOP."
 
 EXEMPLES RÉELS D'AYMAN (reproduire ce style) :
@@ -109,7 +115,7 @@ Ex 1 — Site existant médiocre :
 → Les images sont trop compressées : impression basse qualité
 → Trop de texte : le regard ne sait pas où se poser
 → Design manque d'épuration : donne l'impression que le commerce est dépassé
-Jetez un œil à ce type de résultat : intra-site.com
+Jetez un œil à ce type de résultat : ${portfolioHost}
 Un appel de 10 minutes cette semaine ?"
 
 Ex 2 — Pas de site :
@@ -118,7 +124,7 @@ Ex 2 — Pas de site :
 Je crée des sites professionnels livrés en 5-7 jours : design adapté à votre univers, mobile, référencé Google.
 Maquette gratuite de ce que ça donnerait pour [Nom]. Intéressé(e) ?"`;
 
-  const prompt = `Tu es IntraClaw. Génère un cold email pour Ayman Idamre (agence intra-site.com).
+  const prompt = `Tu es IntraClaw. Génère un cold email pour ${senderName} (agence ${portfolioHost}).
 
 PROSPECT :
 - Nom : ${prospect.businessName}
@@ -132,7 +138,7 @@ ${styleGuide}
 
 RÈGLES ABSOLUES :
 - 1 observation SPÉCIFIQUE sur leur situation réelle (site visité, pas de site détecté, etc.)
-- Lien portfolio : intra-site.com (JAMAIS haiskills.vercel.app)
+- Lien portfolio : ${portfolioHost}
 - Offre : maquette gratuite, sans engagement
 - Format JSON strict
 

@@ -73,7 +73,7 @@ async function generateMorningBrief(): Promise<string> {
   const bufferStats = getBufferStats();
 
   const prompt = `
-Tu es IntraClaw. C'est le matin, génère le briefing de la journée pour Ayman.
+Tu es IntraClaw. C'est le matin, génère le briefing de la journée.
 
 CONTEXTE :
 - Météo Bruxelles : ${weather ? formatWeatherFr(weather) : 'Non disponible'}
@@ -85,7 +85,7 @@ CONTEXTE :
 - Messages en mémoire : ${bufferStats.inMemory}
 
 FORMAT :
-🌅 **Bonjour Ayman !**
+🌅 **Bonjour !**
 
 📊 **Statut du jour**
 [3-4 lignes sur les métriques importantes]

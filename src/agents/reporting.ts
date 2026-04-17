@@ -71,7 +71,7 @@ async function gatherStats(): Promise<RawStats> {
 
 async function generateReportNarrative(stats: RawStats): Promise<string> {
   const prompt = `
-Tu es IntraClaw. Génère le rapport du soir pour Ayman.
+Tu es IntraClaw. Génère le rapport du soir.
 
 DONNÉES DU JOUR (${stats.date}) :
 - Nouveaux prospects en base : ${stats.prospectsNew}

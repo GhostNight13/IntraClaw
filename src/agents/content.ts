@@ -17,11 +17,10 @@ const LINKEDIN_TOPICS = [
   'formation IA : se former en 2026',
   'site vitrine vs site e-commerce : lequel choisir ?',
   'comment un site web génère des clients même quand vous dormez',
-  'HaiSkills : apprendre la cybersécurité en 30 jours',
   'Next.js vs WordPress : le vrai débat en 2026',
-  'SEO local à Bruxelles : ce qui marche vraiment',
+  'SEO local : ce qui marche vraiment',
   'portfolio web : les 5 éléments indispensables',
-  'facturation auto pour freelances belges',
+  'facturation auto pour freelances',
 ];
 
 async function pickTopic(recentTopics: string[]): Promise<string> {
@@ -41,11 +40,14 @@ async function pickTopic(recentTopics: string[]): Promise<string> {
 }
 
 async function generateLinkedInPost(topic: string): Promise<Omit<ContentPost, 'id'>> {
+  const { userName, userContextPrompt } = await import('../config/profile');
+  const author = userName();
+  const ctx = userContextPrompt() || 'an independent developer';
   const prompt = `
-Tu es IntraClaw. Génère un post LinkedIn COMPLET pour Ayman Idamre.
+Tu es IntraClaw. Génère un post LinkedIn COMPLET pour ${author}.
 
 THÈME : ${topic}
-CONTEXTE : Ayman est développeur web à Bruxelles (intra-site.com) + fondateur HaiSkills (haiskills.vercel.app)
+CONTEXTE : ${ctx}
 
 STRUCTURE OBLIGATOIRE :
 1. Hook (1 ligne percutante qui force le stop du scroll)
@@ -57,7 +59,7 @@ RÈGLES :
 - Ton : expert mais humain, pas de jargon
 - Pas de bullet points avec tirets (utilise des emojis ou numéros)
 - Ne pas commencer par "Je"
-- Mentionner HaiSkills ou intra-site.com naturellement (pas de pub directe)
+- Mentionner l'activité de l'auteur naturellement (pas de pub directe)
 - Maximum 280 mots
 - Langue : français
 

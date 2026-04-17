@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 
-const REPO_OWNER = process.env.GITHUB_REPO_OWNER ?? 'ayman-idamre';
+const REPO_OWNER = process.env.GITHUB_REPO_OWNER ?? 'intraclaw';
 const REPO_NAME = process.env.GITHUB_REPO_NAME ?? 'intraclaw';
 
 // Suppress unused variable warnings — kept for env-driven future use

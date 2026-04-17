@@ -3,11 +3,11 @@
  *
  * Analyse les logs récents et les résultats des agents pour détecter
  * des patterns d'erreur ou d'inefficacité, propose des améliorations de code,
- * et applique les modifications UNIQUEMENT après approbation explicite d'Ayman.
+ * et applique les modifications UNIQUEMENT après approbation explicite de l'utilisateur.
  *
  * Flux :
  *   1. analyzeAndPropose()  → lit logs + DB, génère des propositions
- *   2. Ayman valide via Telegram /approve <id> ou dashboard
+ *   2. User valide via Telegram /approve <id> ou dashboard
  *   3. applyProposal(id)    → applique le patch si approuvé
  *
  * Règles invariantes :

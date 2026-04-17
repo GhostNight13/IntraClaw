@@ -1,7 +1,7 @@
 /**
  * MODULE 2 — Boucle autonome
  * Exécute les tâches jusqu'à complétion à 100%.
- * En cas de blocage répété → escalade vers Ayman via Telegram.
+ * En cas de blocage répété → escalade vers l'utilisateur via Telegram.
  * Attend sa réponse avant de continuer.
  */
 
@@ -16,7 +16,7 @@ import type { AgentResult } from '../types';
 
 const MAX_RETRIES      = 3;          // tentatives avant d'escalader
 const RETRY_DELAY_MS   = 30_000;     // 30s entre chaque retry
-const ESCALATION_WAIT  = 10 * 60_000; // 10min max d'attente réponse Ayman
+const ESCALATION_WAIT  = 10 * 60_000; // 10min max d'attente réponse utilisateur
 const STATE_PATH       = path.resolve(process.cwd(), 'data', 'autonomous-state.json');
 
 // ─── State persistence ────────────────────────────────────────────────────────

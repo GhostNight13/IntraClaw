@@ -61,7 +61,7 @@ export interface ColdEmail {
   sentAt?: string;
   openedAt?: string;
   repliedAt?: string;
-  generatedBy: 'claude' | 'gemma' | 'llama';
+  generatedBy: string;
   templateVersion: number;
 }
 
@@ -74,7 +74,7 @@ export interface ContentPost {
   hashtags: string[];
   scheduledFor?: string;  // ISO date
   publishedAt?: string;
-  generatedBy: 'claude' | 'gemma' | 'llama';
+  generatedBy: string;
   topic: string;
 }
 
@@ -99,7 +99,7 @@ export interface AgentResult<T = unknown> {
   data?: T;
   error?: string;
   durationMs: number;
-  model: 'claude' | 'gemma' | 'llama' | 'none';
+  model: string;
   tokensUsed?: number;
   costEur?: number;
   timestamp: string;
@@ -125,7 +125,8 @@ export interface AIRequest {
 
 export interface AIResponse {
   content: string;
-  model: 'claude' | 'gemma' | 'llama';
+  model: string;
+  providerId?: string;
   inputTokens: number;
   outputTokens: number;
   durationMs: number;
@@ -223,7 +224,7 @@ export type LoopActionType =
   | 'evening_report'
   | 'maintenance'
   | 'wait'          // Pas d'action urgente — attendre prochain cycle
-  | 'notify_user'   // Envoyer message Telegram à Ayman
+  | 'notify_user'   // Send Telegram message to user
   | 'execute_task'; // Exécuter une tâche arbitraire via Universal Task Executor
 
 export interface LoopAction {
