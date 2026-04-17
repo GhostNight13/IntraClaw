@@ -9,25 +9,40 @@ const DEFAULT_TIMEOUT = 60000; // 60s default
 const MAX_TIMEOUT     = 300000; // 5 min max
 const LOGS_DIR        = path.resolve(process.cwd(), 'data', 'terminal-logs');
 
-// Commands that are NEVER allowed
-const BLOCKED_COMMANDS: RegExp[] = [
-  /rm\s+-rf\s+\//,        // rm -rf /
-  /mkfs/,                  // format disk
-  /dd\s+if=/,              // disk destroy
-  /:(){ :\|:& };:/,       // fork bomb
-  /shutdown/,
-  /reboot/,
-  /passwd/,
-  /sudo\s+rm/,
+// Hard-blocked — shell escapes, destructive ops, secret-exfil vectors
+const BLOCKED_COMMANDS: Array<[RegExp, string]> = [
+  [/\$\(/,                    'subshell $(…) forbidden'],
+  [/`[^`]*`/,                 'backtick subshell forbidden'],
+  [/\beval\b/,                'eval forbidden'],
+  [/>\s*\/dev\//,             'redirect to /dev/* forbidden'],
+  [/\|\s*(?:ba|z)?sh\b/,      'pipe to sh/bash/zsh forbidden'],
+  [/\b(?:ba|z)?sh\s+-c\b/,    'sh -c / bash -c / zsh -c forbidden'],
+  [/\bnode\s+-e\b/,           'node -e forbidden'],
+  [/\bpython3?\s+-c\b/,       'python -c forbidden'],
+  [/\bperl\s+-e\b/,           'perl -e forbidden'],
+  [/\bruby\s+-e\b/,           'ruby -e forbidden'],
+  [/\bsudo\b/,                'sudo forbidden'],
+  [/\brm\s+-rf?\b.*\//,       'recursive rm with absolute path forbidden'],
+  [/\brm\s+-rf?\s+~/,         'recursive rm of $HOME forbidden'],
+  [/\brm\s+-rf?\s+\$/,        'recursive rm of env var forbidden'],
+  [/\bmkfs\b/,                'mkfs forbidden'],
+  [/\bdd\s+if=/,              'dd forbidden'],
+  [/\bshutdown\b/,            'shutdown forbidden'],
+  [/\breboot\b/,              'reboot forbidden'],
+  [/\bpasswd\b/,              'passwd forbidden'],
+  [/:\(\)\s*\{/,              'fork bomb forbidden'],
+  [/\bgit\s+push\b/,          'git push forbidden'],
+  [/\bgit\s+checkout\s+(main|master)\b/, 'git checkout main/master forbidden'],
+  [/\bgit\s+switch\s+(main|master)\b/,   'git switch main/master forbidden'],
+  [/\bgit\s+reset\s+--hard\b/, 'git reset --hard forbidden'],
+  [/\bgit\s+clean\s+-[df]/,   'git clean -f/-d forbidden'],
 ];
 
 // Commands that need explicit confirmation (logged but allowed)
 const DANGEROUS_PATTERNS: RegExp[] = [
-  /rm\s+-rf/,
-  /sudo/,
-  /chmod\s+777/,
-  /npm\s+publish/,
-  /git\s+push.*--force/,
+  /\brm\s+-rf\b/,
+  /\bchmod\s+777\b/,
+  /\bnpm\s+publish\b/,
   /DROP\s+TABLE/i,
   /DELETE\s+FROM/i,
 ];
@@ -37,7 +52,14 @@ function ensureLogsDir(): void {
 }
 
 function isBlocked(command: string): boolean {
-  return BLOCKED_COMMANDS.some(pattern => pattern.test(command));
+  return BLOCKED_COMMANDS.some(([pattern]) => pattern.test(command));
+}
+
+function blockReason(command: string): string {
+  for (const [pattern, reason] of BLOCKED_COMMANDS) {
+    if (pattern.test(command)) return reason;
+  }
+  return 'blocked';
 }
 
 function isDangerous(command: string): boolean {
@@ -80,7 +102,7 @@ export function execCommand(command: string, options?: {
   if (isBlocked(command)) {
     logger.error('TerminalExec', `BLOCKED dangerous command: ${command}`);
     return {
-      success: false, stdout: '', stderr: 'Command blocked for safety',
+      success: false, stdout: '', stderr: `Command blocked: ${blockReason(command)}`,
       exitCode: -1, durationMs: 0, command, blocked: true,
     };
   }
@@ -166,41 +188,33 @@ export function execCommandAsync(command: string, options?: {
   });
 }
 
+// These wrappers now delegate to the builtin file-ops tool which already
+// enforces REPO_ROOT confinement + protected-paths blacklist. Previously they
+// bypassed those guards, creating a D1 P0 security hole.
+import { toolDefinition as fileOpsTool } from './builtin/file-ops';
+
 /**
- * Read a file from the filesystem.
+ * Read a file from the filesystem (confined via file-ops builtin tool).
  */
-export function readFile(filePath: string): { success: boolean; content: string } {
-  try {
-    const resolved = path.resolve(filePath);
-    const content = fs.readFileSync(resolved, 'utf8');
-    return { success: true, content: content.slice(0, MAX_OUTPUT_SIZE) };
-  } catch (err) {
-    return { success: false, content: err instanceof Error ? err.message : 'Read failed' };
+export async function readFile(filePath: string): Promise<{ success: boolean; content: string }> {
+  const result = await fileOpsTool.execute({ action: 'read', path: filePath });
+  if (!result.success) {
+    return { success: false, content: result.error ?? 'Read failed' };
   }
+  const data = result.data as { content?: string } | undefined;
+  return { success: true, content: (data?.content ?? '').slice(0, MAX_OUTPUT_SIZE) };
 }
 
 /**
- * Write a file to the filesystem (with backup).
+ * Write a file (confined via file-ops builtin tool, with optional backup).
  */
-export function writeFile(filePath: string, content: string): { success: boolean; backupPath?: string } {
-  try {
-    const resolved = path.resolve(filePath);
-    const dir = path.dirname(resolved);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-    // Backup if file exists
-    let backupPath: string | undefined;
-    if (fs.existsSync(resolved)) {
-      backupPath = resolved + `.bak.${Date.now()}`;
-      fs.copyFileSync(resolved, backupPath);
-    }
-
-    fs.writeFileSync(resolved, content, 'utf8');
-    logger.info('TerminalExec', `File written: ${resolved}`);
-    return { success: true, backupPath };
-  } catch {
+export async function writeFile(filePath: string, content: string): Promise<{ success: boolean; backupPath?: string }> {
+  const result = await fileOpsTool.execute({ action: 'write', path: filePath, content });
+  if (!result.success) {
+    logger.warn('TerminalExec', `writeFile blocked: ${result.error ?? 'unknown'}`);
     return { success: false };
   }
+  return { success: true };
 }
 
 function logExecution(result: TerminalResult): void {

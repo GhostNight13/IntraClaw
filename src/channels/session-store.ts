@@ -46,8 +46,10 @@ function saveAuthorizedUsers(): void {
 }
 
 export function isAuthorized(channelId: ChannelId, senderId: string): boolean {
-  // Si aucun user n'est configuré, on autorise tout (mode personnel)
-  if (authorizedUsers.length === 0) return true;
+  // Default-deny: empty whitelist = channel is LOCKED. Explicitly add users
+  // via /authorize or env vars before messages are accepted. This prevents
+  // accidental public exposure of a newly-deployed bot.
+  if (authorizedUsers.length === 0) return false;
   return authorizedUsers.some(u => u.channelId === channelId && u.senderId === senderId);
 }
 

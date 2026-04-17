@@ -14,8 +14,14 @@ import { ProspectStatus, AgentTask } from '../types';
 import { ask } from '../ai';
 import { buildSystemPrompt } from '../memory/core';
 import { getLoopState, pauseLoop, resumeLoop } from '../loop/autonomous-loop';
+import { notifyUserActivity as consciousnessNotifyActivity } from '../evolution/consciousness';
 import { getPrioritizedGoals } from '../reasoning/goal-manager';
 import { executeUniversalTask } from '../executor/universal-executor';
+import { runEvolutionCycle } from '../evolution/evolution-engine';
+import { readVersion } from '../evolution/version';
+import { setConfirmationNotifier, approveByCode, rejectByCode, listPending } from '../security/confirmation';
+import { t } from '../i18n';
+import { isAgencyEnabled } from '../plugins/agency-flag';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -37,7 +43,7 @@ function isAllowed(ctx: Context): boolean {
 async function guardUser(ctx: Context): Promise<boolean> {
   if (!isAllowed(ctx)) {
     logger.warn('Telegram', `Unauthorized access attempt from user ${ctx.from?.id}`);
-    await ctx.reply('⛔ Non autorisé.');
+    await ctx.reply(t('telegram:unauthorized'));
     return false;
   }
   return true;
@@ -291,9 +297,66 @@ async function handleReject(ctx: Context): Promise<void> {
   await ctx.reply(`🚫 Proposition *${proposal.title}* rejetée.${reason ? `\nRaison: ${reason}` : ''}`, { parse_mode: 'Markdown' });
 }
 
+// ─── Evolution (Ouroboros) command ────────────────────────────────────────────
+
+async function handleEvolve(ctx: Context): Promise<void> {
+  const versionBefore = readVersion();
+  await ctx.reply(
+    `🧬 *Cycle d'évolution démarré*\n` +
+    `Version actuelle : \`${versionBefore}\`\n` +
+    `Étapes : candidat → LLM → constitution → tsc → review → commit → vérif post-commit.\n` +
+    `Durée : typiquement 1-3 min…`,
+    { parse_mode: 'Markdown' }
+  );
+
+  try {
+    const result = await runEvolutionCycle('telegram-manual');
+
+    // Send as plain text (no parse_mode) — dynamic content from the LLM
+    // (rationale, violations, reviewer reason, file paths with underscores)
+    // often contains unbalanced Markdown entities which crash sendMessage
+    // with "can't parse entities". Use plain quotes instead of backticks.
+    const lines: string[] = [];
+    const emoji = outcomeEmoji(result.outcome);
+    lines.push(`${emoji} Cycle terminé : ${result.outcome}`);
+    lines.push(`⏱ ${(result.durationMs / 1000).toFixed(1)}s`);
+    lines.push(`📌 Version : ${result.versionBefore} → ${result.versionAfter}`);
+    if (result.filePath)  lines.push(`📄 Fichier : ${result.filePath}`);
+    if (result.sha)       lines.push(`🔖 Commit : ${result.sha.slice(0, 12)}`);
+    if (result.rationale) lines.push(`💡 ${result.rationale.slice(0, 400)}`);
+    if (result.violations && result.violations.length > 0) {
+      lines.push(`⚠️ Violations :`);
+      for (const v of result.violations.slice(0, 5)) lines.push(`  • ${v.slice(0, 160)}`);
+    }
+    if (result.reviewerReason) lines.push(`🛡 Reviewer : ${result.reviewerReason.slice(0, 240)}`);
+    if (result.error)          lines.push(`❌ Erreur : ${result.error.slice(0, 400)}`);
+
+    await ctx.reply(lines.join('\n'));
+  } catch (err) {
+    logger.error('Telegram', 'Evolution cycle crashed', err instanceof Error ? err.message : err);
+    await ctx.reply(`❌ Cycle crashé : ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+function outcomeEmoji(outcome: string): string {
+  switch (outcome) {
+    case 'committed':                return '✅';
+    case 'committed-and-restarted':  return '🔄';
+    case 'rejected-by-constitution': return '📜';
+    case 'rejected-by-reviewer':     return '🛡';
+    case 'rejected-by-tsc':          return '🧪';
+    case 'rolled-back':              return '↩️';
+    case 'no-candidate':             return '🫥';
+    default:                         return '❌';
+  }
+}
+
 async function handleText(ctx: Context): Promise<void> {
   const raw = (ctx.message?.text ?? '').trim();
   if (!raw || raw.startsWith('/')) return;
+
+  // Tell the background consciousness to shut up for 5 min — don't talk over the user
+  try { consciousnessNotifyActivity(); } catch { /* non-fatal */ }
 
   const lower = raw.toLowerCase();
   logger.info('Telegram', `Chat: "${raw.slice(0, 100)}"`);
@@ -311,7 +374,7 @@ async function handleText(ctx: Context): Promise<void> {
       await ctx.reply('⚠️ Déjà en pause.');
       return;
     }
-    pauseLoop('Demandé par Ayman via Telegram');
+    pauseLoop('Requested by user via Telegram');
     stopScheduler();
     schedulerPaused = true;
     await ctx.reply('⏸ Boucle autonome + scheduler en pause.\nDis "reprends" pour relancer.');
@@ -351,11 +414,19 @@ async function handleText(ctx: Context): Promise<void> {
   }
 
   // ─── Action intent routing (triggers agent tasks) ───────────────────────────
+  // Agency-specific intents (prospection, cold email, content) — gated by flag.
+  const agencyOn = isAgencyEnabled();
 
-  const isProspect = /prospect|cherche|trouve|business|site web|leads?|research/i.test(lower);
-  const isEmail    = /email|mail|cold|envoie|envoi|send|contact/i.test(lower);
-  const isContent  = /post|linkedin|contenu|content|publi/i.test(lower);
-  const isReport   = /rapport|bilan|report|résumé|stats/i.test(lower);
+  // Tighter prospection match: require explicit business/lead context so
+  // generic "cherche" / "trouve" (web search, factual lookups) falls through
+  // to the universal executor instead of triggering the CRM agent.
+  const isProspect = agencyOn && (
+    /\b(prospects?|leads?)\b/i.test(lower) ||
+    /\b(cherche|trouve|research|recherche)\b[^.!?]*\b(prospect|lead|client|entreprise|boite|boîte|société|business|site web|agence)/i.test(lower)
+  );
+  const isEmail    = agencyOn && /\b(cold\s?email|cold\s?mail|envoie.*email|envoi.*email|envoie.*mail|contact.*prospect)\b/i.test(lower);
+  const isContent  = agencyOn && /\b(post\s?linkedin|contenu\s?linkedin|génère.*post|publi.*linkedin)\b/i.test(lower);
+  const isReport   = /\b(rapport\s?(du\s?jour|journalier|quotidien)?|bilan\s?(du\s?jour)?|résumé\s?(du\s?jour|journée)?)\b/i.test(lower);
 
   if (isProspect && isEmail) {
     await ctx.replyWithChatAction('typing');
@@ -432,25 +503,37 @@ async function handleText(ctx: Context): Promise<void> {
 
   const actionPatterns = [
     /^(cr[ée]+|fais|fait|build|g[ée]n[èe]re|envoie|d[ée]ploie|installe|configure|cherche|analyse|recherche|t[ée]l[ée]charge|ouvre|lance|modifie|update|upload|download|scrape)/i,
+    /^(lis|lire|regarde|vérifie|verifie|compare|calcule|montre|affiche|explique|trouve|convertis|traduis|résume|resume|teste|test|supprime|nettoie|optimise|refactor|debug|fix|corrige)/i,
     /^(je veux|j'veux|jveux|il faut|il me faut|peux-tu|peux tu|est-ce que tu peux)/i,
+    // Multi-step: sentence contains action verb + "puis" / "ensuite" / "et après"
+    /\b(puis|ensuite|et après|et compare|et résume|et dis|et liste)\b/i,
   ];
 
   const isActionRequest = actionPatterns.some(p => p.test(raw.trim()));
 
   if (isActionRequest && raw.length > 15) {
-    await ctx.reply('🧠 Je réfléchis et je m\'y mets...');
+    await ctx.reply(t('telegram:thinking'));
 
     try {
+      let lastStepShown = -1;
       const result = await executeUniversalTask(raw, (progress) => {
-        if (progress.currentStep % 3 === 0 && progress.currentStep > 0) {
-          ctx.reply(`⚙️ Étape ${progress.currentStep}/${progress.totalSteps}`).catch(() => {});
+        // Stream each step's description + tool live, once per step
+        const idx = progress.currentStep - 1;
+        if (idx > lastStepShown && idx >= 0 && idx < progress.steps.length) {
+          lastStepShown = idx;
+          const step = progress.steps[idx];
+          if (step) {
+            const icon = step.success ? '🔧' : '⚠️';
+            const preview = step.description.slice(0, 80);
+            ctx.reply(`${icon} \`${step.tool}\` — ${preview}`, { parse_mode: 'Markdown' }).catch(() => {});
+          }
         }
       });
 
       if (result.status === 'completed') {
-        await ctx.reply(`✅ Tâche terminée !\n\n${(result.finalOutput ?? '').slice(0, 3000)}`);
+        await ctx.reply(`${t('telegram:task_completed')}\n\n${(result.finalOutput ?? '').slice(0, 3000)}`);
       } else {
-        await ctx.reply(`❌ Échoué : ${result.error ?? 'Erreur inconnue'}`);
+        await ctx.reply(t('telegram:task_failed', { error: result.error ?? t('telegram:unknown_error') }));
       }
     } catch (err) {
       logger.error('Telegram', 'Universal task executor failed', err instanceof Error ? err.message : err);
@@ -502,7 +585,7 @@ COMMANDES DISPONIBLES (que l'utilisateur peut utiliser) :
       { role: 'system', content: buildSystemPrompt() },
       {
         role: 'user',
-        content: `${context}\n\nAyman te dit via Telegram :\n"${message}"\n\nRéponds de manière concise, utile et amicale en français. Tu es IntraClaw, l'agent IA personnel d'Ayman. Si Ayman demande une action (pause, reprise, trigger une tâche), explique-lui la commande à taper. Si c'est une question générale, réponds intelligemment. Maximum 400 caractères.`,
+        content: `${context}\n\nL'utilisateur te dit via Telegram :\n"${message}"\n\nRéponds de manière concise, utile et amicale. Tu es IntraClaw, un agent IA personnel. Si l'utilisateur demande une action (pause, reprise, trigger une tâche), explique-lui la commande à taper. Si c'est une question générale, réponds intelligemment. Maximum 400 caractères.`,
       },
     ],
     maxTokens: 300,
@@ -547,14 +630,18 @@ export function initTelegram(): void {
       '/unblock <id> <retry|skip|abort> — Débloquer une tâche\n' +
       '/proposals — Voir les propositions d\'amélioration\n' +
       '/approve <id> — Approuver et appliquer une amélioration\n' +
-      '/reject <id> — Rejeter une proposition',
+      '/reject <id> — Rejeter une proposition\n' +
+      '/evolve — Lancer un cycle Ouroboros (auto-commit sur branche evolution)',
       { parse_mode: 'Markdown' }
     );
   });
 
   bot.command('status',    async ctx => { if (await guardUser(ctx)) await handleStatus(ctx); });
   bot.command('report',    async ctx => { if (await guardUser(ctx)) await handleReport(ctx); });
-  bot.command('prospects', async ctx => { if (await guardUser(ctx)) await handleProspects(ctx); });
+  // ─── Agency-only commands (gated by ENABLE_AGENCY_AGENTS) ────────────
+  if (isAgencyEnabled()) {
+    bot.command('prospects', async ctx => { if (await guardUser(ctx)) await handleProspects(ctx); });
+  }
   bot.command('pause',     async ctx => { if (await guardUser(ctx)) await handlePause(ctx); });
   bot.command('resume',    async ctx => { if (await guardUser(ctx)) await handleResume(ctx); });
   bot.command('blocked',   async ctx => { if (await guardUser(ctx)) await handleBlocked(ctx); });
@@ -562,25 +649,53 @@ export function initTelegram(): void {
   bot.command('proposals', async ctx => { if (await guardUser(ctx)) await handleProposals(ctx); });
   bot.command('approve',   async ctx => { if (await guardUser(ctx)) await handleApprove(ctx); });
   bot.command('reject',    async ctx => { if (await guardUser(ctx)) await handleReject(ctx); });
+  bot.command('evolve',    async ctx => { if (await guardUser(ctx)) await handleEvolve(ctx); });
 
-  bot.command('prospect', async ctx => {
+  // ─── Human-in-the-loop confirmation ──────────────────────────────────────
+  bot.command('yes', async ctx => {
     if (!await guardUser(ctx)) return;
-    await ctx.reply('🔍 Prospection lancée...');
-    try {
-      const result = await runProspectionAgent();
-      const d = result.data as { prospectsAdded: number } | undefined;
-      await ctx.reply(`✅ ${d?.prospectsAdded ?? 0} prospects ajoutés.`);
-    } catch (err) { await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`); }
+    const code = ctx.match?.toString().trim();
+    if (!code) { await ctx.reply('Usage: `/yes <code>`'); return; }
+    const res = approveByCode(code);
+    await ctx.reply(res.message);
   });
-  bot.command('email', async ctx => {
+  bot.command('no', async ctx => {
     if (!await guardUser(ctx)) return;
-    await ctx.reply('📧 Envoi emails lancé...');
-    try {
-      const result = await runColdEmailAgent();
-      const d = result.data as { emailsSent: number; followUpsSent: number } | undefined;
-      await ctx.reply(`✅ ${d?.emailsSent ?? 0} cold emails + ${d?.followUpsSent ?? 0} relances.`);
-    } catch (err) { await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`); }
+    const code = ctx.match?.toString().trim();
+    if (!code) { await ctx.reply('Usage: `/no <code>`'); return; }
+    const res = rejectByCode(code);
+    await ctx.reply(res.message);
   });
+  bot.command('pending', async ctx => {
+    if (!await guardUser(ctx)) return;
+    const list = listPending();
+    if (list.length === 0) { await ctx.reply('✅ Aucune confirmation en attente.'); return; }
+    const lines = list.map(p =>
+      `• [${p.kind}] ${p.description.slice(0, 80)} — /yes ${p.code} | /no ${p.code}`,
+    );
+    await ctx.reply('⏳ *En attente :*\n' + lines.join('\n'), { parse_mode: 'Markdown' });
+  });
+
+  if (isAgencyEnabled()) {
+    bot.command('prospect', async ctx => {
+      if (!await guardUser(ctx)) return;
+      await ctx.reply('🔍 Prospection lancée...');
+      try {
+        const result = await runProspectionAgent();
+        const d = result.data as { prospectsAdded: number } | undefined;
+        await ctx.reply(`✅ ${d?.prospectsAdded ?? 0} prospects ajoutés.`);
+      } catch (err) { await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`); }
+    });
+    bot.command('email', async ctx => {
+      if (!await guardUser(ctx)) return;
+      await ctx.reply('📧 Envoi emails lancé...');
+      try {
+        const result = await runColdEmailAgent();
+        const d = result.data as { emailsSent: number; followUpsSent: number } | undefined;
+        await ctx.reply(`✅ ${d?.emailsSent ?? 0} cold emails + ${d?.followUpsSent ?? 0} relances.`);
+      } catch (err) { await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`); }
+    });
+  }
 
   // Free text → coordinator
   bot.on('message:text', async ctx => {
@@ -602,6 +717,7 @@ export function initTelegram(): void {
 
   // Wire cold-email notifier (avoids circular import)
   setColdEmailNotifier(sendTelegramMessage);
+  setConfirmationNotifier(sendTelegramMessage);
 
   logger.info('Telegram', `Bot initialized — authorized user: ${ALLOWED_USER}`);
 }
