@@ -22,6 +22,7 @@ export interface WorkflowNodeConfig {
   value?: string;
   channel?: string;
   message?: string;
+  [key: string]: unknown;
 }
 
 export interface WorkflowNode {

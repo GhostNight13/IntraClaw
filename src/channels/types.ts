@@ -11,7 +11,8 @@ export type ChannelId =
   | 'signal'
   | 'imessage'
   | 'matrix'
-  | 'email';
+  | 'email'
+  | 'sms';
 
 export interface UniversalMediaAttachment {
   type:      'image' | 'audio' | 'video' | 'file' | 'sticker';

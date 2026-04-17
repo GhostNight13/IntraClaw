@@ -1,0 +1,16 @@
+# memory/
+
+Your personal memory files live here — they are gitignored on purpose.
+
+On first install, copy the generic templates into place:
+
+    bash scripts/init-templates.sh
+
+Or run `npm install` — the postinstall hook does it automatically
+if `memory/SOUL.md` is missing.
+
+Edit any of the copied files to teach your agent who you are, what it can do,
+and what you care about. The agent reads them at every boot.
+
+Templates live in `memory/templates/` (committed) — the copies in `memory/`
+(SOUL.md, IDENTITY.md, USER.md, ...) are yours and stay private.

@@ -15,16 +15,25 @@ function getStripe(): StripeClass | null {
   }) as unknown as StripeClass;
 }
 
-function getPriceId(plan: 'pro' | 'team'): string {
-  const envKey = plan === 'pro' ? 'STRIPE_PRICE_ID_PRO' : 'STRIPE_PRICE_ID_TEAM';
-  const priceId = process.env[envKey];
-  if (!priceId) throw new Error(`Missing env var ${envKey}`);
-  return priceId;
+export type PaidPlan = 'pro' | 'team' | 'agency';
+
+function getPriceId(plan: PaidPlan): string {
+  // Prefer the tier-spec env var names, fall back to legacy names.
+  const candidates: Record<PaidPlan, string[]> = {
+    pro:    ['STRIPE_PRICE_PRO',    'STRIPE_PRICE_ID_PRO'],
+    team:   ['STRIPE_PRICE_TEAM',   'STRIPE_PRICE_ID_TEAM'],
+    agency: ['STRIPE_PRICE_AGENCY', 'STRIPE_PRICE_ID_AGENCY'],
+  };
+  for (const key of candidates[plan]) {
+    const val = process.env[key];
+    if (val) return val;
+  }
+  throw new Error(`Missing Stripe price env var for plan="${plan}" (tried ${candidates[plan].join(', ')})`);
 }
 
 export async function createCheckoutSession(
   userId: string,
-  plan: 'pro' | 'team',
+  plan: PaidPlan,
   successUrl: string,
   cancelUrl: string,
 ): Promise<string> {
@@ -192,7 +201,27 @@ export async function handleStripeWebhook(rawBody: Buffer, signature: string): P
     case 'customer.subscription.deleted':
       await handleSubscriptionDeleted(event.data.object as unknown as StripeSubscription);
       break;
+    case 'invoice.payment_failed':
+      await handleInvoicePaymentFailed(event.data.object as unknown as { customer?: string | { id: string } });
+      break;
     default:
       break;
   }
+}
+
+async function handleInvoicePaymentFailed(invoice: { customer?: string | { id: string } }): Promise<void> {
+  const db = getDb();
+  const raw = invoice.customer;
+  const customerId =
+    typeof raw === 'string' ? raw
+      : raw && typeof raw === 'object' && 'id' in raw ? raw.id
+      : null;
+  if (!customerId) return;
+
+  const row = db
+    .prepare('SELECT user_id FROM subscriptions WHERE stripe_customer_id = ?')
+    .get(customerId) as { user_id: string } | undefined;
+  if (!row) return;
+
+  updateSubscription(row.user_id, { status: 'payment_failed' });
 }

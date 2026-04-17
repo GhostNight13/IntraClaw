@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { Code2, Play, Save, GitDiff, Loader2 } from 'lucide-react';
+import { Code2, Play, Save, FileDiff as GitDiff, Loader2 } from 'lucide-react';
 import DiffViewer from '@/components/DiffViewer';
 import RollbackPanel from '@/components/RollbackPanel';
 

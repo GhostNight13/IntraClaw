@@ -1,0 +1,70 @@
+wing: intraclaw
+rooms:
+- name: memory
+  description: Files from memory/
+  keywords:
+  - memory
+  - memory
+- name: plugins
+  description: Files from plugins/
+  keywords:
+  - plugins
+  - plugins
+- name: setup
+  description: Files from setup/
+  keywords:
+  - setup
+  - setup
+- name: documentation
+  description: Files from docs/
+  keywords:
+  - documentation
+  - docs
+- name: dashboard
+  description: Files from dashboard/
+  keywords:
+  - dashboard
+  - dashboard
+- name: logs
+  description: Files from logs/
+  keywords:
+  - logs
+  - logs
+- name: scripts
+  description: Files from scripts/
+  keywords:
+  - scripts
+  - scripts
+- name: packages
+  description: Files from packages/
+  keywords:
+  - packages
+  - packages
+- name: skills
+  description: Files from skills/
+  keywords:
+  - skills
+  - skills
+- name: data
+  description: Files from data/
+  keywords:
+  - data
+  - data
+- name: design
+  description: Files from assets/
+  keywords:
+  - design
+  - assets
+- name: src
+  description: Files from src/
+  keywords:
+  - src
+  - src
+- name: frontend
+  description: Files from components/
+  keywords:
+  - frontend
+  - components
+- name: general
+  description: Files that don't fit other rooms
+  keywords: []

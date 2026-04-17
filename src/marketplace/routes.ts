@@ -1,7 +1,13 @@
 import { Router, Request, Response } from 'express';
-import { listSkills, getSkillBySlug, publishSkill, rateSkill, getMySkills } from './registry';
+import {
+  listSkills, getSkillBySlug, publishSkill, rateSkill, getMySkills,
+  listGenericSkills, getGenericSkill,
+  installUserSkill, uninstallUserSkill, listUserSkills,
+  addToWaitlist, listWaitlist,
+} from './registry';
 import { downloadAndInstallSkill } from './installer';
 import { validateSkillYaml } from './validator';
+import { findUserById } from '../users/user-store';
 
 export const marketplaceRouter = Router();
 
@@ -110,6 +116,88 @@ marketplaceRouter.get('/my-skills', (req: Request, res: Response) => {
     const authorId = (req as Request & { userId?: string }).userId ?? 'anonymous';
     const skills = getMySkills(authorId);
     res.json({ skills, total: skills.length });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ─── Generic Skills (installable per-user) ─────────────────────────────────
+
+// GET /api/marketplace/generic
+marketplaceRouter.get('/generic', (req: Request, res: Response) => {
+  try {
+    const userId = (req as Request & { userId?: string }).userId ?? 'anonymous';
+    const installed = new Map(listUserSkills(userId).map(r => [r.skill_id, r]));
+    const skills = listGenericSkills().map(s => {
+      const row = installed.get(s.id);
+      return {
+        id:          s.id,
+        name:        s.name,
+        description: s.description,
+        icon:        s.icon ?? null,
+        tier:        s.tier,
+        requires:    s.requires,
+        installed:   !!row,
+        enabled:     row ? row.enabled === 1 : false,
+        config:      row ? JSON.parse(row.config) : {},
+      };
+    });
+    res.json({ skills, total: skills.length });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// POST /api/marketplace/install  body: { skillId, config? }
+marketplaceRouter.post('/install', (req: Request, res: Response) => {
+  try {
+    const userId = (req as Request & { userId?: string }).userId ?? 'anonymous';
+    const { skillId, config } = req.body as { skillId?: string; config?: Record<string, unknown> };
+    if (!skillId) { res.status(400).json({ error: 'Missing skillId' }); return; }
+    if (!getGenericSkill(skillId)) { res.status(404).json({ error: 'Unknown skillId' }); return; }
+    installUserSkill(userId, skillId, config ?? {});
+    res.json({ ok: true, skillId, installed: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// POST /api/marketplace/uninstall  body: { skillId }
+marketplaceRouter.post('/uninstall', (req: Request, res: Response) => {
+  try {
+    const userId = (req as Request & { userId?: string }).userId ?? 'anonymous';
+    const { skillId } = req.body as { skillId?: string };
+    if (!skillId) { res.status(400).json({ error: 'Missing skillId' }); return; }
+    uninstallUserSkill(userId, skillId);
+    res.json({ ok: true, skillId, installed: false });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ─── Beta Waitlist ─────────────────────────────────────────────────────────
+
+// POST /api/marketplace/waitlist  body: { email, source? }
+marketplaceRouter.post('/waitlist', (req: Request, res: Response) => {
+  try {
+    const { email, source } = req.body as { email?: string; source?: string };
+    if (!email) { res.status(400).json({ error: 'Missing email' }); return; }
+    const result = addToWaitlist(email, source ?? 'landing');
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// GET /api/marketplace/waitlist  (admin only)
+marketplaceRouter.get('/waitlist', (req: Request, res: Response) => {
+  try {
+    const userId = (req as Request & { userId?: string }).userId;
+    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const user = findUserById(userId);
+    if (!user || user.role !== 'admin') { res.status(403).json({ error: 'Forbidden — admin only' }); return; }
+    const entries = listWaitlist(1000);
+    res.json({ entries, total: entries.length });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }

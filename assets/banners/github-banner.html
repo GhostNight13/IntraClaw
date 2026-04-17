@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1280px; height: 640px; overflow: hidden; background: #000005; font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+  .canvas {
+    width: 1280px; height: 640px;
+    position: relative;
+    background: #000005;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* Star field */
+  .stars { position: absolute; inset: 0; }
+
+  /* Central card */
+  .card {
+    position: relative; z-index: 2;
+    width: 1100px; height: 480px;
+    background: linear-gradient(135deg, #040d1f 0%, #070d20 50%, #040a18 100%);
+    border-radius: 24px;
+    border: 1px solid rgba(43,127,255,0.25);
+    box-shadow:
+      0 0 60px rgba(43,127,255,0.12),
+      0 0 120px rgba(43,127,255,0.06),
+      inset 0 1px 0 rgba(43,127,255,0.1);
+    display: flex;
+    align-items: center;
+    padding: 0 80px;
+    gap: 72px;
+    overflow: hidden;
+  }
+
+  /* Card circuit pattern */
+  .card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(43,127,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(43,127,255,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    border-radius: 24px;
+  }
+
+  /* Card inner glow top */
+  .card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent 0%, rgba(43,127,255,0.6) 30%, rgba(61,220,132,0.4) 60%, transparent 100%);
+    border-radius: 24px 24px 0 0;
+  }
+
+  /* LOGO */
+  .logo-block {
+    position: relative; z-index: 1;
+    flex-shrink: 0;
+    width: 220px; height: 220px;
+  }
+
+  /* TEXT BLOCK */
+  .text-block {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column; gap: 18px;
+  }
+
+  .wordmark {
+    font-size: 90px;
+    font-weight: 800;
+    letter-spacing: -3px;
+    line-height: 1;
+  }
+  .wordmark .intra {
+    background: linear-gradient(135deg, #ffffff 0%, #c8d8ff 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .wordmark .claw {
+    background: linear-gradient(135deg, #4d9fff 0%, #2B7FFF 50%, #1a5fcc 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  .tagline {
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.6);
+  }
+  .tagline .act {
+    background: linear-gradient(135deg, #3DDC84, #2db868);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  /* Stats row */
+  .stats {
+    position: absolute; z-index: 1;
+    bottom: 36px; left: 80px; right: 80px;
+    display: flex; gap: 0;
+    border-top: 1px solid rgba(43,127,255,0.12);
+    padding-top: 20px;
+  }
+  .stat { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+  .stat + .stat { border-left: 1px solid rgba(255,255,255,0.05); padding-left: 28px; margin-left: 28px; }
+  .stat-n { font-size: 26px; font-weight: 800; color: #2B7FFF; letter-spacing: -1px; }
+  .stat-l { font-size: 11px; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 1.5px; }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <!-- Star field via SVG -->
+  <svg class="stars" style="position:absolute;inset:0;width:100%;height:100%">
+    <defs>
+      <radialGradient id="sg" cx="50%" cy="50%">
+        <stop offset="0%" stop-color="#0a1628"/>
+        <stop offset="100%" stop-color="#000005"/>
+      </radialGradient>
+    </defs>
+    <rect width="1280" height="640" fill="url(#sg)"/>
+    <!-- stars -->
+    <circle cx="45" cy="32" r="1" fill="rgba(255,255,255,0.6)"/>
+    <circle cx="120" cy="78" r="1.5" fill="rgba(43,127,255,0.8)"/>
+    <circle cx="200" cy="45" r="1" fill="rgba(255,255,255,0.5)"/>
+    <circle cx="320" cy="22" r="1" fill="rgba(255,255,255,0.7)"/>
+    <circle cx="440" cy="60" r="1.5" fill="rgba(43,127,255,0.6)"/>
+    <circle cx="560" cy="30" r="1" fill="rgba(255,255,255,0.4)"/>
+    <circle cx="680" cy="55" r="1" fill="rgba(255,255,255,0.6)"/>
+    <circle cx="800" cy="18" r="1.5" fill="rgba(43,127,255,0.7)"/>
+    <circle cx="920" cy="70" r="1" fill="rgba(255,255,255,0.5)"/>
+    <circle cx="1050" cy="35" r="1" fill="rgba(255,255,255,0.6)"/>
+    <circle cx="1180" cy="52" r="1.5" fill="rgba(43,127,255,0.5)"/>
+    <circle cx="80" cy="580" r="1" fill="rgba(255,255,255,0.5)"/>
+    <circle cx="180" cy="600" r="1.5" fill="rgba(43,127,255,0.6)"/>
+    <circle cx="300" cy="590" r="1" fill="rgba(255,255,255,0.4)"/>
+    <circle cx="500" cy="610" r="1" fill="rgba(255,255,255,0.6)"/>
+    <circle cx="700" cy="595" r="1.5" fill="rgba(43,127,255,0.7)"/>
+    <circle cx="900" cy="585" r="1" fill="rgba(255,255,255,0.5)"/>
+    <circle cx="1100" cy="600" r="1" fill="rgba(255,255,255,0.6)"/>
+    <circle cx="1220" cy="575" r="1.5" fill="rgba(43,127,255,0.5)"/>
+    <circle cx="30" cy="300" r="1" fill="rgba(255,255,255,0.4)"/>
+    <circle cx="1250" cy="320" r="1" fill="rgba(255,255,255,0.5)"/>
+  </svg>
+
+  <div class="card">
+
+    <!-- LOGO SVG — paw with streaky claws + gradient -->
+    <div class="logo-block">
+      <svg class="claw-svg" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Glow backdrop -->
+      <path d="M30 95 C25 70, 45 30, 55 10" stroke="rgba(43,127,255,0.25)" stroke-width="28" stroke-linecap="round"/>
+      <path d="M48 98 C44 74, 62 35, 70 12" stroke="rgba(43,127,255,0.25)" stroke-width="28" stroke-linecap="round"/>
+      <path d="M66 96 C64 72, 80 38, 86 16" stroke="rgba(43,127,255,0.25)" stroke-width="28" stroke-linecap="round"/>
+      <!-- Claw marks -->
+      <path d="M30 95 C25 70, 45 30, 55 10" stroke="#2B7FFF" stroke-width="11" stroke-linecap="round"/>
+      <path d="M48 98 C44 74, 62 35, 70 12" stroke="#2B7FFF" stroke-width="11" stroke-linecap="round"/>
+      <path d="M66 96 C64 72, 80 38, 86 16" stroke="#2B7FFF" stroke-width="11" stroke-linecap="round"/>
+      <path d="M83 90 C83 68, 97 42, 100 22" stroke="#2B7FFF" stroke-width="9" stroke-linecap="round"/>
+      <!-- Green lines -->
+      <path d="M32 78 Q55 65 78 72" stroke="#3DDC84" stroke-width="3.5" stroke-linecap="round"/>
+      <path d="M36 87 Q58 76 82 82" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" opacity="0.8"/>
+      <path d="M35 70 Q56 58 76 63" stroke="#3DDC84" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+    </svg>
+    </div>
+
+    <!-- TEXT -->
+    <div class="text-block">
+      <div class="wordmark">
+        <span class="intra">intra</span><span class="claw">Claw</span>
+      </div>
+      <div class="tagline">THINK. <span class="act">ACT.</span> AUTOMATE.</div>
+    </div>
+
+    <!-- STATS -->
+    <div class="stats">
+      <div class="stat"><div class="stat-n">164</div><div class="stat-l">TypeScript Files</div></div>
+      <div class="stat"><div class="stat-n">~90</div><div class="stat-l">API Endpoints</div></div>
+      <div class="stat"><div class="stat-n">20</div><div class="stat-l">Dashboard Pages</div></div>
+      <div class="stat"><div class="stat-n">25+</div><div class="stat-l">DB Tables</div></div>
+      <div class="stat"><div class="stat-n">0</div><div class="stat-l">TS Errors</div></div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

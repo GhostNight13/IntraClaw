@@ -58,6 +58,32 @@ export function stopAutonomousLoop(): void {
   logger.info('AutonomousLoop', 'Stopped');
 }
 
+/**
+ * Stateless tick for multi-tenant BullMQ worker.
+ * Runs a single perception→reason→act→observe cycle for one user.
+ * Does NOT schedule next tick — BullMQ queue-client handles that.
+ */
+export async function runLoopTick(userId: string): Promise<void> {
+  const tickStart = Date.now();
+  logger.info('AutonomousLoop', `[user:${userId}] tick start`);
+  try {
+    const ctx = await buildPerceptionContext();
+    const action = await decidNextAction(ctx);
+    if (action && (action as any).type !== 'wait') {
+      try {
+        const result = await runTask((action as any).task || (action as any).description || 'loop-action');
+        await recordObservation({ userId, action, result, at: new Date().toISOString() } as any);
+      } catch (err) {
+        logger.error('AutonomousLoop', `[user:${userId}] action failed: ${err}`);
+      }
+    }
+    logger.info('AutonomousLoop', `[user:${userId}] tick done in ${Date.now() - tickStart}ms`);
+  } catch (err) {
+    logger.error('AutonomousLoop', `[user:${userId}] tick error: ${err}`);
+    throw err;
+  }
+}
+
 // ─── Core tick ──────────────────────────────────────────────────────────────
 
 async function tick(): Promise<void> {

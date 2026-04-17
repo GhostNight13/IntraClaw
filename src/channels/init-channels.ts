@@ -1,13 +1,16 @@
 /**
  * INTRACLAW — Channels Initializer
  * Démarre les adapters activés selon les variables .env
+ *
+ * Chaque adapter auto-détecte sa disponibilité (env vars) — aucun crash si
+ * une dépendance optionnelle manque (discord.js, imapflow, nodemailer, …).
  */
 import { registerAdapter, initGateway, setMessageHandler } from './gateway';
-import type { UniversalMessage, SendOptions } from './types';
+import type { ChannelAdapter, UniversalMessage, SendOptions } from './types';
 
 function log(msg: string) {
   const ts = new Date().toISOString().slice(11, 19);
-  console.log(`[${ts}] 🌐 [Channels] ${msg}`);
+  console.log(`[${ts}] [Channels] ${msg}`);
 }
 
 export type MessageHandler = (
@@ -15,88 +18,96 @@ export type MessageHandler = (
   respond: (text: string, opts?: SendOptions) => Promise<void>
 ) => Promise<void>;
 
-export async function initAllChannels(handler: MessageHandler): Promise<void> {
-  // Init le gateway (charge les sessions autorisées)
-  initGateway();
+/** Tracks adapters we've successfully registered */
+const registered: string[] = [];
 
-  // Définit le handler global
+function tryRegister(name: string, load: () => ChannelAdapter | null): void {
+  try {
+    const adapter = load();
+    if (!adapter) { log(`${name} SKIP (indisponible)`); return; }
+    registerAdapter(adapter);
+    registered.push(name);
+    log(`${name} activé`);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    log(`${name} SKIP: ${message}`);
+  }
+}
+
+export function getRegisteredChannels(): string[] {
+  return [...registered];
+}
+
+export async function initAllChannels(handler: MessageHandler): Promise<void> {
+  initGateway();
   setMessageHandler(handler);
 
   // ── Telegram ────────────────────────────────────────
   if (process.env.TELEGRAM_BOT_TOKEN) {
-    try {
+    tryRegister('Telegram', () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { TelegramAdapter } = require('./adapters/telegram-adapter');
-      registerAdapter(new TelegramAdapter());
-      log('Telegram activé');
-    } catch (e: any) {
-      log(`Telegram SKIP: ${e.message}`);
-    }
+      return new TelegramAdapter();
+    });
   }
 
-  // ── WhatsApp ────────────────────────────────────────
-  if (process.env.ENABLE_WHATSAPP === 'true') {
-    try {
-      const { WhatsAppAdapter } = require('./adapters/whatsapp');
-      registerAdapter(new WhatsAppAdapter());
-      log('WhatsApp activé');
-    } catch (e: any) {
-      log(`WhatsApp SKIP: ${e.message}`);
-    }
-  }
+  // ── Discord (REST + Gateway, library-optional) ──────
+  tryRegister('Discord', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { DiscordAdapter } = require('./discord');
+    if (!DiscordAdapter.isAvailable()) return null;
+    return new DiscordAdapter();
+  });
 
-  // ── Discord ─────────────────────────────────────────
-  if (process.env.ENABLE_DISCORD === 'true' && process.env.DISCORD_TOKEN) {
-    try {
-      const { DiscordAdapter } = require('./adapters/discord');
-      const guildIds = process.env.DISCORD_ALLOWED_GUILDS
-        ? process.env.DISCORD_ALLOWED_GUILDS.split(',')
-        : [];
-      registerAdapter(new DiscordAdapter(process.env.DISCORD_TOKEN!, guildIds));
-      log('Discord activé');
-    } catch (e: any) {
-      log(`Discord SKIP: ${e.message}`);
-    }
-  }
+  // ── Slack (REST + Events webhook) ───────────────────
+  tryRegister('Slack', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { SlackAdapter } = require('./slack');
+    if (!SlackAdapter.isAvailable()) return null;
+    return new SlackAdapter();
+  });
 
-  // ── Slack ────────────────────────────────────────────
-  if (
-    process.env.ENABLE_SLACK === 'true' &&
-    process.env.SLACK_BOT_TOKEN &&
-    process.env.SLACK_SIGNING_SECRET &&
-    process.env.SLACK_APP_TOKEN
-  ) {
-    try {
-      const { SlackAdapter } = require('./adapters/slack');
-      registerAdapter(new SlackAdapter(
-        process.env.SLACK_BOT_TOKEN!,
-        process.env.SLACK_SIGNING_SECRET!,
-        process.env.SLACK_APP_TOKEN!,
-      ));
-      log('Slack activé');
-    } catch (e: any) {
-      log(`Slack SKIP: ${e.message}`);
-    }
-  }
+  // ── WhatsApp via Twilio ─────────────────────────────
+  tryRegister('WhatsApp', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { WhatsAppTwilioAdapter } = require('./whatsapp');
+    if (!WhatsAppTwilioAdapter.isAvailable()) return null;
+    return new WhatsAppTwilioAdapter();
+  });
 
-  // ── Matrix ────────────────────────────────────────────
+  // ── SMS via Twilio ──────────────────────────────────
+  tryRegister('SMS', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { SMSTwilioAdapter } = require('./sms');
+    if (!SMSTwilioAdapter.isAvailable()) return null;
+    return new SMSTwilioAdapter();
+  });
+
+  // ── Email (IMAP poll + SMTP send) ───────────────────
+  tryRegister('Email', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { EmailChannelAdapter } = require('./email-channel');
+    if (!EmailChannelAdapter.isAvailable()) return null;
+    return new EmailChannelAdapter();
+  });
+
+  // ── Matrix (legacy heavy adapter, library-based) ────
   if (
     process.env.ENABLE_MATRIX === 'true' &&
     process.env.MATRIX_HOMESERVER &&
     process.env.MATRIX_USER_ID &&
     process.env.MATRIX_ACCESS_TOKEN
   ) {
-    try {
+    tryRegister('Matrix', () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { MatrixAdapter } = require('./adapters/matrix');
-      registerAdapter(new MatrixAdapter(
+      return new MatrixAdapter(
         process.env.MATRIX_HOMESERVER!,
         process.env.MATRIX_USER_ID!,
         process.env.MATRIX_ACCESS_TOKEN!,
-      ));
-      log('Matrix activé');
-    } catch (e: any) {
-      log(`Matrix SKIP: ${e.message}`);
-    }
+      );
+    });
   }
 
-  log(`Tous les canaux activés initialisés`);
+  log(`Canaux actifs: ${registered.join(', ') || 'aucun'}`);
 }

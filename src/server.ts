@@ -30,8 +30,29 @@ import {
 import { getLoopState, pauseLoop, resumeLoop } from './loop/autonomous-loop';
 import { getAllGoals, addGoal, updateGoalStatus, getPrioritizedGoals } from './reasoning/goal-manager';
 import { executeUniversalTask } from './executor/universal-executor';
+import {
+  executeWithGraph,
+  resumeTask as resumeGraphTask,
+  getTaskState as getGraphTaskState,
+  getTaskHistory as getGraphTaskHistory,
+  deleteTaskThread as deleteGraphTaskThread,
+  isGraphExecutorEnabled,
+} from './executor/graph-executor';
 import { getRouterStats } from './routing/pal-router';
+import { getProviderStatus, refreshProviders } from './providers/multi-provider';
 import { getStrategyLineage } from './evolution/strategy-evolver';
+import {
+  getConsciousnessStatus,
+  startConsciousness,
+  stopConsciousness,
+  wakeNow as consciousnessWakeNow,
+  readScratchpad as readConsciousnessScratchpad,
+  getWakeHistory as getConsciousnessWakeHistory,
+} from './evolution/consciousness';
+import { skillLibrary, getSkill as getLearnedSkill } from './evolution/skill-library';
+import { runEvolutionCycle, readEvolutionLog } from './evolution/evolution-engine';
+import { readVersion } from './evolution/version';
+import { rollback as evolutionRollback } from './evolution/self-commit';
 import { getBusinessMemoryState } from './memory/business-memory';
 import { runREMCycle } from './memory/dreaming';
 import { generateEmailDigest, formatDigestForTelegram, getRules, addRule, deleteRule } from './tools/email-manager';
@@ -40,6 +61,11 @@ import { marketplaceRouter } from './marketplace';
 import { pluginsRouter } from './plugins';
 import { workflowsRouter } from './workflows';
 import { webhookRouter, apiWebhookRouter } from './webhooks/router';
+import { slackWebhookRouter } from './channels/slack-webhooks';
+import { twilioWebhookRouter } from './channels/twilio-webhooks';
+import { getRegisteredChannels } from './channels/init-channels';
+import { sendToChannel, getActiveChannels as getActiveChannelsList } from './channels/gateway';
+import type { ChannelId } from './channels/types';
 import { setLanguage, getCurrentLanguage } from './i18n';
 import { updateUser, findUserById } from './users/user-store';
 import { initCalendar, listAllEvents, createCalendarEvent, deleteCalendarEvent, findFreeSlots, getTodaysAgenda, isCalendarAvailable } from './tools/calendar';
@@ -58,6 +84,8 @@ import { createEntity, updateEntity, deleteEntity, listEntities, searchEntities,
 import { extractSubgraph, getGraphStats } from './memory/graph/graph-query';
 import { getAllTools, getToolsByCategory } from './tools/tool-registry';
 import { getRelevantTools } from './tools/tool-retriever';
+import { getTools as getAutoTools, getTool as getAutoTool, executeTool, getToolCount, findToolsByKeyword } from './tools/auto-registry';
+import { determineModelTier, analyzeRequest as analyzeRouting, getRoutingKeywords } from './routing/smart-router';
 import { createExperiment, runBothVariants, concludeExperiment, listExperiments, getExperimentResults } from './experiments/ab-testing';
 import { runRedTeam, getRedTeamResults } from './eval/red-team';
 import { getAuditLog } from './compliance/audit-log';
@@ -124,6 +152,11 @@ app.use('/api/plugins', pluginsRouter);
 
 // ─── Workflow routes ──────────────────────────────────────────────────────────
 app.use('/api/workflows', workflowsRouter);
+
+// ─── Channel webhook routes (Slack/Twilio) — MUST be registered before the ──
+//     generic /webhooks/:webhookId catch-all router below.
+app.use('/webhooks/slack', slackWebhookRouter);
+app.use('/webhooks', twilioWebhookRouter);  // /webhooks/whatsapp/incoming, /webhooks/sms/incoming
 
 // ─── Webhook routes (raw body for HMAC) ──────────────────────────────────────
 app.use('/webhooks', webhookRouter);
@@ -479,8 +512,88 @@ app.post('/api/task', async (req: Request, res: Response) => {
   if (!request) { res.status(400).json({ error: 'Missing request' }); return; }
 
   try {
+    // Route through the graph executor if enabled, else the linear one.
+    if (isGraphExecutorEnabled()) {
+      const result = await executeWithGraph(request);
+      res.json(result);
+      return;
+    }
     const result = await executeUniversalTask(request);
     res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown' });
+  }
+});
+
+// ─── Graph Executor API (/api/graph/tasks/*) ─────────────────────────────────
+
+/** POST /api/graph/tasks — create + run a new graph task. */
+app.post('/api/graph/tasks', async (req: Request, res: Response) => {
+  const { request, threadId, async: runAsync } = req.body as {
+    request?: string;
+    threadId?: string;
+    async?: boolean;
+  };
+  if (!request) { res.status(400).json({ error: 'Missing request' }); return; }
+
+  try {
+    if (runAsync) {
+      // Fire-and-forget: return threadId immediately so client can poll.
+      const id = threadId ?? `graph-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      void executeWithGraph(request, id).catch(err => {
+        logger.error('Server', `Async graph task ${id} crashed`, err instanceof Error ? err.message : err);
+      });
+      res.status(202).json({ threadId: id, status: 'running' });
+      return;
+    }
+    const result = await executeWithGraph(request, threadId);
+    res.json({ threadId: result.threadId, state: result });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown' });
+  }
+});
+
+/** GET /api/graph/tasks/:threadId — current state from the latest checkpoint. */
+app.get('/api/graph/tasks/:threadId', async (req: Request, res: Response) => {
+  const threadId = String(req.params['threadId'] ?? '');
+  try {
+    const state = await getGraphTaskState(threadId);
+    if (!state) { res.status(404).json({ error: 'Thread not found' }); return; }
+    res.json({ threadId, state });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown' });
+  }
+});
+
+/** POST /api/graph/tasks/:threadId/resume — continue from the last checkpoint. */
+app.post('/api/graph/tasks/:threadId/resume', async (req: Request, res: Response) => {
+  const threadId = String(req.params['threadId'] ?? '');
+  try {
+    const state = await resumeGraphTask(threadId);
+    res.json({ threadId, state });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown' });
+  }
+});
+
+/** GET /api/graph/tasks/:threadId/history — checkpoint trail. */
+app.get('/api/graph/tasks/:threadId/history', async (req: Request, res: Response) => {
+  const threadId = String(req.params['threadId'] ?? '');
+  const limit = Number(req.query['limit'] ?? 100);
+  try {
+    const history = await getGraphTaskHistory(threadId, Number.isFinite(limit) ? limit : 100);
+    res.json({ threadId, history });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown' });
+  }
+});
+
+/** DELETE /api/graph/tasks/:threadId — wipe all checkpoints for a thread. */
+app.delete('/api/graph/tasks/:threadId', async (req: Request, res: Response) => {
+  const threadId = String(req.params['threadId'] ?? '');
+  try {
+    await deleteGraphTaskThread(threadId);
+    res.json({ threadId, deleted: true });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown' });
   }
@@ -553,6 +666,40 @@ app.post('/api/improvements/:id/reject', (req: Request, res: Response) => {
 
 app.get('/api/strategy/lineage', (_req: Request, res: Response) => {
   res.json(getStrategyLineage());
+});
+
+// ─── Consciousness endpoints ─────────────────────────────────────────────────
+
+app.get('/api/consciousness/status', (_req: Request, res: Response) => {
+  res.json(getConsciousnessStatus());
+});
+
+app.post('/api/consciousness/start', (_req: Request, res: Response) => {
+  startConsciousness();
+  res.json({ ok: true, status: getConsciousnessStatus() });
+});
+
+app.post('/api/consciousness/stop', (_req: Request, res: Response) => {
+  stopConsciousness();
+  res.json({ ok: true, status: getConsciousnessStatus() });
+});
+
+app.post('/api/consciousness/wake-now', async (_req: Request, res: Response) => {
+  try {
+    await consciousnessWakeNow();
+    res.json({ ok: true, status: getConsciousnessStatus() });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.get('/api/consciousness/scratchpad', (_req: Request, res: Response) => {
+  res.json({ content: readConsciousnessScratchpad(8000) });
+});
+
+app.get('/api/consciousness/history', (req: Request, res: Response) => {
+  const limit = Math.min(parseInt((req.query['limit'] as string) ?? '50', 10), 500);
+  res.json({ history: getConsciousnessWakeHistory(limit) });
 });
 
 // ─── POST /api/computer-use/screenshot ───────────────────────────────────────
@@ -754,11 +901,40 @@ app.get('/api/memory/rem/history', (_req: Request, res: Response) => {
 
 // ─── Channels endpoints ───────────────────────────────────────────────────────
 
-// GET /api/channels/status — État de tous les canaux actifs
-app.get('/api/channels/status', (_req: Request, res: Response) => {
-  const { getActiveChannels } = require('./channels/gateway') as { getActiveChannels: () => string[] };
+// GET /api/channels — list all channels and their statuses
+app.get('/api/channels', (_req: Request, res: Response) => {
+  const active = getActiveChannelsList();
+  const registered = getRegisteredChannels();
   res.json({
-    active: getActiveChannels(),
+    active,
+    registered,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// POST /api/channels/:name/test — send a test message via a specific channel
+app.post('/api/channels/:name/test', async (req: Request, res: Response) => {
+  const name = String(req.params['name'] ?? '').toLowerCase() as ChannelId;
+  const body = (req.body ?? {}) as { recipientId?: string; text?: string };
+  const recipient = body.recipientId;
+  const text = body.text || `[IntraClaw] Test message via ${name} at ${new Date().toISOString()}`;
+  if (!recipient) {
+    res.status(400).json({ error: 'recipientId required in body' });
+    return;
+  }
+  try {
+    await sendToChannel(name, recipient, text);
+    res.json({ ok: true, channel: name, recipientId: recipient });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+// GET /api/channels/status — État de tous les canaux actifs (legacy)
+app.get('/api/channels/status', (_req: Request, res: Response) => {
+  res.json({
+    active: getActiveChannelsList(),
     timestamp: new Date().toISOString(),
   });
 });
@@ -1272,6 +1448,102 @@ app.get('/api/tools/search', async (req: Request, res: Response) => {
   res.json(await getRelevantTools(q, 10));
 });
 
+// ─── Auto-Registry (Phase 2 — self-registering tools) ───────────────────────
+
+app.get('/api/tools/builtin', (_req: Request, res: Response) => {
+  const tools = getAutoTools().map(t => ({
+    name: t.name,
+    description: t.description,
+    parameters: t.parameters,
+  }));
+  res.json({ count: tools.length, tools });
+});
+
+app.get('/api/tools/builtin/:name', (req: Request, res: Response) => {
+  const name = String(req.params.name);
+  const tool = getAutoTool(name);
+  if (!tool) { res.status(404).json({ error: `Tool not found: ${name}` }); return; }
+  res.json({ name: tool.name, description: tool.description, parameters: tool.parameters });
+});
+
+app.post('/api/tools/builtin/:name/execute', async (req: Request, res: Response) => {
+  const name = String(req.params.name);
+  const params = req.body as Record<string, unknown>;
+  const result = await executeTool(name, params);
+  res.status(result.success ? 200 : 400).json(result);
+});
+
+app.get('/api/tools/builtin-search', (req: Request, res: Response) => {
+  const keyword = req.query.q as string | undefined;
+  if (!keyword) { res.json(getAutoTools().map(t => ({ name: t.name, description: t.description }))); return; }
+  const matches = findToolsByKeyword(keyword);
+  res.json(matches.map(t => ({ name: t.name, description: t.description })));
+});
+
+app.get('/api/tools/builtin-count', (_req: Request, res: Response) => {
+  res.json({ count: getToolCount() });
+});
+
+// ─── Learned Skills (Voyager-style library) ─────────────────────────────────
+
+app.get('/api/skills/learned', (_req: Request, res: Response) => {
+  const skills = skillLibrary.listAll();
+  res.json({ count: skills.length, skills });
+});
+
+app.get('/api/skills/learned/:name', (req: Request, res: Response) => {
+  const name = String(req.params.name);
+  const skill = getLearnedSkill(name);
+  if (!skill) { res.status(404).json({ error: `Learned skill not found: ${name}` }); return; }
+  // Don't ship the full embedding vector by default — it's large and rarely useful to clients.
+  const { embedding, ...safe } = skill;
+  res.json({ ...safe, embeddingDim: embedding.length });
+});
+
+app.post('/api/skills/learned/search', async (req: Request, res: Response) => {
+  const { query, k } = req.body as { query?: string; k?: number };
+  if (!query || typeof query !== 'string') {
+    res.status(400).json({ error: 'query (string) required' });
+    return;
+  }
+  const topK = Math.min(Math.max(1, Number(k) || 5), 25);
+  try {
+    const matches = await skillLibrary.findRelevant(query, topK);
+    res.json({ query, k: topK, matches });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'search failed' });
+  }
+});
+
+app.delete('/api/skills/learned/:name', (req: Request, res: Response) => {
+  const name = String(req.params.name);
+  const removed = skillLibrary.deleteSkill(name);
+  if (!removed) { res.status(404).json({ error: `Learned skill not found: ${name}` }); return; }
+  res.json({ ok: true, deleted: name });
+});
+
+app.post('/api/skills/learned/:name/use', (req: Request, res: Response) => {
+  const name = String(req.params.name);
+  const { success } = req.body as { success?: boolean };
+  const existing = getLearnedSkill(name);
+  if (!existing) { res.status(404).json({ error: `Learned skill not found: ${name}` }); return; }
+  skillLibrary.recordUsage(name, success !== false);
+  res.json({ ok: true, name, recordedSuccess: success !== false });
+});
+
+// ─── Smart Router (Phase 2) ─────────────────────────────────────────────────
+
+app.post('/api/routing/analyze', (req: Request, res: Response) => {
+  const { request } = req.body as { request?: string };
+  if (!request) { res.status(400).json({ error: 'request field required' }); return; }
+  const analysis = analyzeRouting(request);
+  res.json(analysis);
+});
+
+app.get('/api/routing/keywords', (_req: Request, res: Response) => {
+  res.json(getRoutingKeywords());
+});
+
 // ─── A/B Experiment endpoints ─────────────────────────────────────────────────
 
 app.get('/api/experiments', (req: Request, res: Response) => {
@@ -1457,8 +1729,50 @@ app.get('/api/router/stats', (_req: Request, res: Response) => {
   res.json(getRouterStats());
 });
 
+app.get('/api/providers/status', (_req: Request, res: Response) => {
+  res.json(getProviderStatus());
+});
+
+app.post('/api/providers/refresh', (_req: Request, res: Response) => {
+  const providers = refreshProviders();
+  res.json(providers.map(p => ({ id: p.id, name: p.name, available: p.available, priority: p.priority })));
+});
+
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ ok: true, uptime: process.uptime() });
+});
+
+// ─── Evolution (Ouroboros) endpoints ──────────────────────────────────────────
+
+app.post('/api/evolution/cycle', async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as { trigger?: unknown };
+  const trigger = typeof body.trigger === 'string' && body.trigger.trim()
+    ? body.trigger.trim().slice(0, 120)
+    : 'http-manual';
+  try {
+    const result = await runEvolutionCycle(trigger);
+    const status = result.outcome === 'error' ? 500 : 200;
+    res.status(status).json(result);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.get('/api/evolution/history', (_req: Request, res: Response) => {
+  res.type('text/markdown; charset=utf-8').send(readEvolutionLog());
+});
+
+app.get('/api/evolution/version', (_req: Request, res: Response) => {
+  res.json({ version: readVersion() });
+});
+
+app.post('/api/evolution/rollback', (_req: Request, res: Response) => {
+  try {
+    const result = evolutionRollback();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 // ─── Server bootstrap ─────────────────────────────────────────────────────────

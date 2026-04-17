@@ -285,12 +285,26 @@ function migrate(db: Database.Database): void {
       user_id                TEXT    NOT NULL UNIQUE,
       stripe_customer_id     TEXT,
       stripe_subscription_id TEXT,
-      plan                   TEXT    NOT NULL DEFAULT 'free' CHECK(plan IN ('free','pro','team')),
-      status                 TEXT    NOT NULL DEFAULT 'inactive' CHECK(status IN ('active','canceled','past_due','trialing','inactive')),
+      plan                   TEXT    NOT NULL DEFAULT 'free' CHECK(plan IN ('free','pro','team','agency')),
+      status                 TEXT    NOT NULL DEFAULT 'inactive' CHECK(status IN ('active','canceled','past_due','trialing','inactive','payment_failed')),
       current_period_end     TEXT,
       created_at             TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
     CREATE INDEX IF NOT EXISTS idx_sub_customer ON subscriptions(stripe_customer_id);
+
+    CREATE TABLE IF NOT EXISTS loop_tick_log (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    TEXT    NOT NULL,
+      created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_tick_user_date ON loop_tick_log(user_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS waitlist (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      email       TEXT    NOT NULL UNIQUE,
+      created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_waitlist_created ON waitlist(created_at DESC);
 
     CREATE TABLE IF NOT EXISTS saml_configs (
       id               TEXT PRIMARY KEY,
@@ -301,6 +315,68 @@ function migrate(db: Database.Database): void {
       created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
   `);
+
+  // Voyager-style learned skills library (loaded from external migration file).
+  try {
+    const migrationPath = path.resolve(__dirname, 'db', 'migrations', 'learned-skills.sql');
+    if (fs.existsSync(migrationPath)) {
+      db.exec(fs.readFileSync(migrationPath, 'utf8'));
+    } else {
+      // Fallback inline DDL (e.g. when bundled without the .sql asset)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS learned_skills (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          name          TEXT    UNIQUE NOT NULL,
+          version       INTEGER NOT NULL DEFAULT 1,
+          code          TEXT    NOT NULL,
+          description   TEXT    NOT NULL,
+          embedding     TEXT    NOT NULL,
+          created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+          updated_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+          usage_count   INTEGER NOT NULL DEFAULT 0,
+          success_count INTEGER NOT NULL DEFAULT 0,
+          last_used_at  TEXT,
+          tags          TEXT    NOT NULL DEFAULT '[]'
+        );
+        CREATE INDEX IF NOT EXISTS idx_learned_skills_name  ON learned_skills(name);
+        CREATE INDEX IF NOT EXISTS idx_learned_skills_usage ON learned_skills(usage_count DESC);
+      `);
+    }
+  } catch (err) {
+    logger.warn('DB', 'learned_skills migration failed', err instanceof Error ? err.message : err);
+  }
+
+  // Migrate legacy subscriptions table whose CHECK constraints lack 'agency' / 'payment_failed'.
+  // SQLite cannot ALTER a CHECK — we rebuild the table when the stored DDL is out of date.
+  try {
+    const sqlRow = db
+      .prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='subscriptions'`)
+      .get() as { sql?: string } | undefined;
+    if (sqlRow?.sql && (!sqlRow.sql.includes("'agency'") || !sqlRow.sql.includes("'payment_failed'"))) {
+      db.exec(`
+        BEGIN;
+        ALTER TABLE subscriptions RENAME TO subscriptions_old;
+        CREATE TABLE subscriptions (
+          id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id                TEXT    NOT NULL UNIQUE,
+          stripe_customer_id     TEXT,
+          stripe_subscription_id TEXT,
+          plan                   TEXT    NOT NULL DEFAULT 'free' CHECK(plan IN ('free','pro','team','agency')),
+          status                 TEXT    NOT NULL DEFAULT 'inactive' CHECK(status IN ('active','canceled','past_due','trialing','inactive','payment_failed')),
+          current_period_end     TEXT,
+          created_at             TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+        );
+        INSERT INTO subscriptions (id, user_id, stripe_customer_id, stripe_subscription_id, plan, status, current_period_end, created_at)
+          SELECT id, user_id, stripe_customer_id, stripe_subscription_id, plan, status, current_period_end, created_at FROM subscriptions_old;
+        DROP TABLE subscriptions_old;
+        CREATE INDEX IF NOT EXISTS idx_sub_customer ON subscriptions(stripe_customer_id);
+        COMMIT;
+      `);
+      logger.info('DB', 'Migrated subscriptions table to support agency/payment_failed');
+    }
+  } catch (err) {
+    logger.warn('DB', 'subscriptions migration check failed', err instanceof Error ? err.message : err);
+  }
 }
 
 // ─── Write helpers ─────────────────────────────────────────────────────────────

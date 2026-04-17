@@ -11,6 +11,7 @@ import { costTracker } from './utils/cost-tracker';
 import { initTelegram } from './channels/telegram';
 import { startServer } from './server';
 import { startAutonomousLoop, stopAutonomousLoop } from './loop/autonomous-loop';
+import { startConsciousness, stopConsciousness } from './evolution/consciousness';
 import { initMCPServers, closeMCPServers } from './mcp/mcp-client';
 import { initVectorMemory } from './memory/vector-memory';
 import { initAllChannels } from './channels/init-channels';
@@ -21,6 +22,7 @@ import { initHomeAssistant } from './tools/smart-home';
 import { loadAllPlugins } from './plugins';
 import { initWorkflowScheduler } from './workflows';
 import { indexAllTools } from './tools/tool-retriever';
+import { initToolRegistry } from './tools/auto-registry';
 
 async function main(): Promise<void> {
   logger.info('Main', '=== IntraClaw starting (Autonomous Mode) ===');
@@ -39,6 +41,8 @@ async function main(): Promise<void> {
   initTelegram();
   await initMCPServers();
   await initVectorMemory();
+  initToolRegistry();
+  logger.info('Main', 'Tool auto-registry initialized');
   indexAllTools().catch(err => logger.warn('Startup', 'Tool indexing failed', err instanceof Error ? err.message : err));
   initCalendar();
   await initHomeAssistant();
@@ -82,6 +86,14 @@ async function main(): Promise<void> {
 
   await startAutonomousLoop();
 
+  // ── Background consciousness (Ouroboros-style self-reflection thread) ──────
+  if (process.env.CONSCIOUSNESS_ENABLED === 'true') {
+    startConsciousness();
+    logger.info('Main', 'Background consciousness enabled');
+  } else {
+    logger.info('Main', 'Background consciousness disabled (set CONSCIOUSNESS_ENABLED=true to enable)');
+  }
+
   logger.info('Main', 'IntraClaw autonomous — perceiving, deciding, acting. Press Ctrl+C to stop.');
 
   process.on('SIGINT',  () => shutdown('SIGINT'));
@@ -91,6 +103,7 @@ async function main(): Promise<void> {
 function shutdown(signal: string): void {
   logger.info('Main', `Received ${signal} — shutting down`);
   stopAutonomousLoop();
+  stopConsciousness();
   closeMCPServers().catch(() => {}).finally(() => process.exit(0));
 }
 

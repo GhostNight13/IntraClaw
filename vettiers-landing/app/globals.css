@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+/* ─── Theme tokens (Tailwind v4 CSS-first) ─────────────────────────── */
+@theme {
+  --color-bg: #020617;           /* slate-950 */
+  --color-bg-elev: #0b1220;      /* slightly lifted */
+  --color-surface: #0f172a;      /* slate-900 */
+  --color-border: #1e293b;       /* slate-800 */
+  --color-border-strong: #334155;/* slate-700 */
+  --color-text: #e2e8f0;         /* slate-200 */
+  --color-text-muted: #94a3b8;   /* slate-400 */
+  --color-text-dim: #64748b;     /* slate-500 */
+
+  --color-brand: #10b981;        /* emerald-500 */
+  --color-brand-hover: #059669;  /* emerald-600 */
+  --color-brand-soft: rgba(16, 185, 129, 0.12);
+  --color-brand-ring: rgba(16, 185, 129, 0.35);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --radius-card: 1rem;
+  --shadow-glow: 0 0 0 1px rgba(16, 185, 129, 0.25),
+    0 12px 40px -12px rgba(16, 185, 129, 0.35);
+}
+
+/* ─── Base ─────────────────────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-brand-soft);
+  color: var(--color-text);
+}
+
+/* Focus ring for a11y */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ─── Utilities ────────────────────────────────────────────────────── */
+.noise-bg {
+  background-image:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(16, 185, 129, 0.12), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 90% 10%, rgba(56, 189, 248, 0.06), transparent 60%);
+}
+
+.glass {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: saturate(150%) blur(10px);
+  -webkit-backdrop-filter: saturate(150%) blur(10px);
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.6s ease-out both;
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Radix Accordion animations (driven by --radix-accordion-content-height) */
+@keyframes accordionDown {
+  from { height: 0; }
+  to   { height: var(--radix-accordion-content-height); }
+}
+@keyframes accordionUp {
+  from { height: var(--radix-accordion-content-height); }
+  to   { height: 0; }
+}
+
+/* Simulated iPhone frame */
+.iphone-frame {
+  width: 280px;
+  border-radius: 44px;
+  background: linear-gradient(180deg, #1a1f2e 0%, #0a0d14 100%);
+  padding: 12px;
+  border: 1px solid var(--color-border-strong);
+  box-shadow: 0 40px 80px -30px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.iphone-screen {
+  background: #05070c;
+  border-radius: 32px;
+  padding: 20px 16px;
+  min-height: 520px;
+  border: 1px solid #1a2233;
+}

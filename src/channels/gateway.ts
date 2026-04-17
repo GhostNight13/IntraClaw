@@ -124,7 +124,9 @@ export async function sendToChannel(
 
   // Découpe les messages trop longs (limite selon le canal)
   const MAX_LENGTH: Record<string, number> = {
-    discord: 2000, slack: 4000, telegram: 4096, default: 4096,
+    discord: 2000, slack: 4000, telegram: 4096,
+    whatsapp: 1500, sms: 1600, email: 100_000,
+    default: 4096,
   };
   const maxLen = MAX_LENGTH[channelId] ?? MAX_LENGTH['default'] ?? 4096;
 

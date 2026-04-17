@@ -1,9 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
-import { Sidebar } from '@/components/Sidebar';
-import { MobileNav } from '@/components/MobileNav';
-import { PWAInstall } from '@/components/PWAInstall';
+import { ChromeShell } from '@/components/ChromeShell';
 
 const inter = Inter({
   variable: '--font-inter',
@@ -46,12 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="h-full flex" style={{ background: 'var(--bg-base)', color: 'var(--text-primary)' }}>
-        <Sidebar />
-        <main className="flex-1 overflow-auto pb-16 md:pb-0">
-          {children}
-        </main>
-        <MobileNav />
-        <PWAInstall />
+        <ChromeShell>{children}</ChromeShell>
       </body>
     </html>
   );
