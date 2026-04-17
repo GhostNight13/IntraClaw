@@ -1,18 +1,64 @@
-node_modules/
-dist/
+# ─── Secrets ────────────────────────────────────────────────
 .env
-.claude/
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ─── Personal memory (use memory/templates/ instead) ────────
+memory/*.md
+memory/*.md.bak
+!memory/templates/
+!memory/.gitkeep
+
+# ─── Runtime data (databases, caches, state) ────────────────
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/business-memory.json
+data/autonomous-state.json
+data/consciousness-log.json
+data/scheduled-tasks.json
+data/evolution-restart.signal
+data/emails-sent.json
+data/strategy.json
+data/cost-state.json
+data/rate-limit-state.json
+data/prompt-cache/
+data/ai-cache/
 data/logs/
 data/cache/
 data/chroma/
+data/reports/
+data/sessions/
+data/audio/
+
+# ─── Build artifacts ────────────────────────────────────────
+node_modules/
+dist/
+.next/
+out/
+build/
+coverage/
+*.tsbuildinfo
+
+# ─── Logs ───────────────────────────────────────────────────
 *.log
+logs/
+/tmp/intraclaw.log
+
+# ─── IDE / OS ───────────────────────────────────────────────
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
 
-# Runtime state (generated, not source)
-data/ai-cache/
-data/rate-limit-state.json
-data/cost-state.json
-data/emails-sent.json
-data/strategy.json
-data/reports/
+# ─── Claude Code ────────────────────────────────────────────
+.claude/
+.claude/worktrees/
+.claude/launch.json
+.claire/
+
+# ─── Lockfiles from other managers (keep package-lock.json) ─
+yarn.lock
+pnpm-lock.yaml
